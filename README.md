@@ -1,7 +1,18 @@
 JSONModel.php
 ===
+[![Build Status](https://travis-ci.org/unframed/JSONModel.php.svg)](https://travis-ci.org/unframed/JSONModel.php)
+
 A simple protocol to map between JSON and SQL, a practical PHP implementation.
 
+Requirements
+---
+- map between JSON messages and SQL relations 
+- provide practical conveniences to repair tables and views
+- use SQLAbstract.php and JSONMessage.php
+- support PHP 5.3
+
+Synopis
+---
 The `JSONModel` class implements the Data Mapper pattern to map between SQL relations and `JSONMessage` instances using an `SQLAbstract` class implementation.
 
 Acting as model controller, `JSONModel` provides methods to insert, replace, update and delete JSON messages in an SQL database.
@@ -21,16 +32,6 @@ select($options)
 count($options)
 ~~~
 
-...
-
-Requirements
----
-- provide practical conveniences to repair tables and views
-- use SQLAbstract.php and JSONMessage.php
-- support PHP 5.3
-
-Synopis
----
 ...
 
 ### Model Controllers
