@@ -15,12 +15,12 @@ Synopis
 ---
 The `JSONModel` class implements the Data Mapper pattern to map between SQL relations and `JSONMessage` instances using an `SQLAbstract` class implementation.
 
-Acting as model controller, `JSONModel` provides methods to insert, replace, update and delete JSON messages in an SQL database.
+Acting as model controller, `JSONModel` provides methods to insert, replace and update JSON messages in an SQL database.
 
 ~~~
-insert($values)
-replace($values)
-update($key, $values)
+insert($message)
+replace($message)
+update($id, $map)
 ~~~
 
 Acting as view controller, `JSONModel` also provides methods to fetch one, fetch all, select, filter and count relations from an SQL table or an SQL view.
@@ -34,7 +34,7 @@ count($options)
 
 ...
 
-### Model Controllers
+### Message
 
 ~~~php
 <?php
@@ -51,25 +51,41 @@ class Task extends JSONMessage {
 ?>
 ~~~
 
+### Table
+
 ~~~php
 <?php
 
 class Tasks extends JSONModel {
-    function __construct ($sqlAbstract) {
-        parent::__construct(
-            $sqlAbstract, 'test', 'task', array(
-                'task_name' => 'VARCHAR(255) NOT NULL',
-                'task_created_at' => 'INTEGER UNSIGNED NOT NULL',
-                'task_modified_at' => 'INTEGER UNSIGNED',
-                'task_deleted_at' => 'INTEGER UNSIGNED'
-            ), array (
-                'task_created_at' => 'intval',
-                'task_modified_at' => 'intval',
-                'task_deleted_at' => 'intval'
-            ));
+    static function columns () {
+        return array(
+            'task' => 'INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY',
+            'task_name' => 'VARCHAR(255) NOT NULL',
+            'task_scheduled_for' => 'INTEGER UNSIGNED NOT NULL',
+            'task_completed_at' => 'INTEGER UNSIGNED',
+            'task_created_at' => 'INTEGER UNSIGNED NOT NULL',
+            'task_modified_at' => 'INTEGER UNSIGNED',
+            'task_deleted_at' => 'INTEGER UNSIGNED'
+            );
     }
-    function message ($map, $encoded=NULL) {
-        return new Task($message, $encoded);
+    static function types() {
+        return array(
+            'task_scheduled_for' => 'intval',
+            'task_completed_at' => 'intval',
+            'task_created_at' => 'intval',
+            'task_modified_at' => 'intval',
+            'task_deleted_at' => 'intval'
+            );
+    }
+    function message($map, $encoded=NULL) {
+        return new Task($map, $encoded);
+    }
+    function __construct ($sql, $types) {
+        parent::__construct($sql, $types, array(
+            'name' => 'task',
+            'columns' => self::columns(),
+            'domain' => 'test_'
+            ));
     }
     function addNew ($map) {
         $task = $this->message($map);
@@ -91,6 +107,47 @@ class Tasks extends JSONModel {
 ?>
 ~~~
 
+### View
+
+~~~php
+<?php
+
+class TasksView extends JSONModel {
+    static function columns ($sql) {
+        return (
+            "SELECT *,"
+            ." (task_scheduled_for > NOW())"
+            ." AS task_due,"
+            ." (task_completed_at IS NULL OR task_completed_at < NOW())"
+            ." AS task_completed,"
+            ." (task_deleted_at IS NOT NULL)"
+            ." AS task_deleted"
+            ." FROM ".$sql->prefixedIdentifier('test_task')
+            );
+    }
+    static function types() {
+        return array(
+            'task_due' => 'boolval',
+            'task_completed' => 'boolval',
+            'task_deleted' => 'boolval'
+            );
+    }
+    function message($map, $encoded=NULL) {
+        return new Task($map, $encoded);
+    }
+    function __construct ($sql, $types) {
+        parent::__construct($sql, $types, array(
+            'name' => 'task_view',
+            'columns' => self::columns($sql),
+            'idColumn' => 'task',
+            'domain' => 'test_'
+            ));
+    }
+}
+
+?>
+~~~
+
 ...
 
 ### Application
@@ -99,12 +156,28 @@ class Tasks extends JSONModel {
 <?php
 
 class Application {
-    private $_sql;
-    function __construct() {
-        $this->_sql = new SQLAbstractPDO();
+    public $sql;
+    public $tables;
+    public $views;
+    public $types;
+    function __construct($sql) {
+        $this->sql = $sql;
+        $this->tables = array(
+            'task' => Tasks::columns()
+        );
+        $this->views = array(
+            'task_view' => TasksView::columns($sql)
+        );
+        $this->types = array_merge(
+            Tasks::types(),
+            TasksView::types()
+        );
     }
     function tasks () {
-        return new Tasks($this->_sql);
+        return new Tasks($this->sql, $this->types);
+    }
+    function tasksView () {
+        return new TasksView($this->sql, $this->types);
     }
 }
 
