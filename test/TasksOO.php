@@ -64,7 +64,7 @@ class TasksView extends JSONModel {
         parent::__construct($sql, $types, array(
             'name' => 'task_view',
             'columns' => self::columns($sql),
-            'idColumn' => 'task',
+            'primary' => 'task',
             'domain' => 'test_'
             ));
     }

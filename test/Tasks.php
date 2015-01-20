@@ -59,7 +59,7 @@ class Application extends JSONModelTest {
         return array(
             'name' => $name,
             'columns' => $this->views[$name],
-            'idColumn' => $table,
+            'primary' => $table,
             'jsonColumn' => $table.'_json',
             'domain' => 'test_'
             );

@@ -39,7 +39,7 @@ class JSONModel {
     /**
      *
      */
-    protected $idColumn;
+    protected $primary;
     /**
      *
      */
@@ -53,7 +53,7 @@ class JSONModel {
         $m = new JSONMessage($options);
         $this->name = $m->getString('name');
         $this->columns = $m->getDefault('columns', array());
-        $this->idColumn = $m->getString('idColumn', $this->name);
+        $this->primary = $m->getString('primary', $this->name);
         $this->jsonColumn = $m->getString('jsonColumn', $this->name.'_json');
         $this->domain = $m->getString('domain', '');
         $this->isView = (is_string($this->columns));
@@ -215,12 +215,25 @@ class JSONModel {
      * @return integer
      */
     function insert ($message) {
-        if ($message->has($this->idColumn)) {
+        // check that the new message does not have a primary key set.
+        if ($message->has($this->primary)) {
             throw $this->exception('Cannot insert with an identifier set');
         }
-        return $this->sql->insert(
-            $this->qualifiedName(), $this->row($message->map)
+        // insert existing columns and save the inserted id
+        $table = $this->qualifiedName();
+        $id = $this->sql->insert(
+            $table, array_intersect_key($message->map, $this->columns)
             );
+        // update the message's map
+        $message->map[$this->primary] = $id;
+        if ($this->jsonColumn !== NULL) {
+            // eventually update the *_json column in the database
+            $this->sql->update($table, array(
+                $this->jsonColumn => json_encode($message->map)
+                ));
+        }
+        // return the updated message
+        return $message;
     }
     /**
      * Insert a message's into this model's table, return the number of affected rows.
@@ -229,11 +242,33 @@ class JSONModel {
      * @return integer
      */
     function replace ($message) {
-        if (!$message->has($this->idColumn)) {
+        // check that an identifier is set
+        if (!$message->has($this->primary)) {
             throw $this->exception('Cannot replace without an identifier set');
         }
+        // replace the whole message's map, maybe serialize in the *_json column
         return $this->sql->replace(
             $this->qualifiedName(), $this->row($message->map)
+            );
+    }
+    function update ($values, $options=NULL) {
+        // supply the default options: update by primary key
+        if ($options === NULL) {
+            if (!array_key_exists($this->primary, $values)) {
+                throw $this->exception('Cannot update without an identifier');
+            }
+            $options = array(
+                'filter' => array(
+                    $this->primary => $values[$this->primary]
+                    )
+                );
+        }
+        // don't set the primary key, ever !
+        unset($values[$this->primary]);
+        // update a set of $values in this model's table for the relations selected
+        // by the options.
+        return $this->sql->update(
+            $this->qualifiedName(), $values, $options
             );
     }
 }
