@@ -13,7 +13,8 @@ class Tasks extends JSONModel {
             'task_completed_at' => 'INTEGER UNSIGNED',
             'task_created_at' => 'INTEGER UNSIGNED NOT NULL',
             'task_modified_at' => 'INTEGER UNSIGNED',
-            'task_deleted_at' => 'INTEGER UNSIGNED'
+            'task_deleted_at' => 'INTEGER UNSIGNED',
+            'task_json' => 'MEDIUMTEXT'
             );
     }
     static function types() {

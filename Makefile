@@ -8,6 +8,7 @@ DEPS = deps \
 test: pull
 	./press up wp
 	php test/create.php
+	php test/insert.php
 	./press down wp
 
 pull: ${DEPS}

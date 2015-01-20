@@ -230,7 +230,7 @@ class JSONModel {
             // eventually update the *_json column in the database
             $this->sql->update($table, array(
                 $this->jsonColumn => json_encode($message->map)
-                ));
+                ), array('filter' => array($this->primary => $id)));
         }
         // return the updated message
         return $message;
