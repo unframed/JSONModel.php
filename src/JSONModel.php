@@ -143,7 +143,7 @@ class JSONModel {
         if (array_key_exists($this->jsonColumn, $row)) {
             $encoded = $row[$this->jsonColumn];
             $map = json_decode($encoded, TRUE);
-            unset($row[$column]);
+            unset($row[$this->jsonColumn]);
             return $this->message($this->cast($row, $map), $encoded);
         } else {
             return $this->message($this->cast($row, array()));
@@ -154,7 +154,7 @@ class JSONModel {
      */
     function fetchById ($id) {
         return $this->map($this->sql->getRowById(
-            $this->qualifiedName(), $id, $this->name
+            $this->qualifiedName(), $this->primary, $id
             ));
     }
     /**
@@ -162,7 +162,7 @@ class JSONModel {
      */
     function fetchByIds ($ids) {
         $rows = $this->sql->getRowsByIds(
-            $this->qualifiedName(), $ids, $this->name
+            $this->qualifiedName(), $this->primary, $ids
             );
         return array_map(array($this, 'map'), $rows);
     }
@@ -221,9 +221,9 @@ class JSONModel {
         }
         // insert existing columns and save the inserted id
         $table = $this->qualifiedName();
-        $id = $this->sql->insert(
+        $id = intval($this->sql->insert(
             $table, array_intersect_key($message->map, $this->columns)
-            );
+            ));
         // update the message's map
         $message->map[$this->primary] = $id;
         if ($this->jsonColumn !== NULL) {
