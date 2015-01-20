@@ -2,13 +2,18 @@ DEPS = deps \
 	deps/test-more-php \
 	deps/test_sites.php \
 	deps/JSONMessage.php \
-	deps/SQLAbstract.php
+	deps/SQLAbstract.php \
+	deps/WordPress
 
 test: pull
+	./press up wp
+	php test/create.php
+	./press down wp
 
 pull: ${DEPS}
 	cd deps/JSONMessage.php && git pull origin
 	cd deps/SQLAbstract.php && git pull origin
+	cd deps/WordPress && git pull origin
 
 deps:
 	mkdir -p deps
@@ -30,3 +35,8 @@ deps/SQLAbstract.php:
 	git clone \
 		https://github.com/unframed/SQLAbstract.php.git \
 		deps/SQLAbstract.php
+
+deps/WordPress:
+	git clone \
+		https://github.com/WordPress/WordPress.git \
+		deps/WordPress

@@ -16,8 +16,10 @@ class Application extends JSONModelTest {
 	function __construct($sql) {
 		parent::__construct($sql, array(
             'task' => array(
-                'task' => 'INTEGER AUTOINCREMENT PRIMARY KEY',
+                'task' => 'INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY',
                 'task_name' => 'VARCHAR(255) NOT NULL',
+                'task_scheduled_for' => 'INTEGER UNSIGNED NOT NULL',
+                'task_completed_at' => 'INTEGER UNSIGNED',
                 'task_created_at' => 'INTEGER UNSIGNED NOT NULL',
                 'task_modified_at' => 'INTEGER UNSIGNED',
                 'task_deleted_at' => 'INTEGER UNSIGNED',
@@ -27,14 +29,16 @@ class Application extends JSONModelTest {
 	            'task_view' => (
 	                "SELECT *,"
 	                    ." (task_scheduled_for > NOW())"
-	                    ." as task_due,"
+	                    ." AS task_due,"
 	                    ." (task_completed_at IS NULL OR task_completed_at < NOW())"
-	                    ." as task_completed,"
-	                    ." (task_deleted_at NOT NULL)"
-	                    ." as task_deleted"
-	                ." FROM ".$this->_sql->prefixedIdentifier('task')
+	                    ." AS task_completed,"
+	                    ." (task_deleted_at IS NOT NULL)"
+	                    ." AS task_deleted"
+	                ." FROM ".$sql->prefixedIdentifier('test_task')
 	                )
             ), array(
+                'task_scheduled_for' => 'intval',
+                'task_completed_at' => 'intval',
 	            'task_created_at' => 'intval',
 	            'task_modified_at' => 'intval',
 	            'task_deleted_at' => 'intval',

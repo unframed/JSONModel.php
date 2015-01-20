@@ -6,5 +6,10 @@ php:
   # using major version aliases
   - 5.3
 
+install:
+  - sudo apt-get install -qq python-mysqldb zipmerge
+  - git config --global user.email "test@user"
+  - git config --global user.name "test user"
+
 # omitting "script:" would default to phpunit
 script: make test

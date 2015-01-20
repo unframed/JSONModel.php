@@ -92,7 +92,7 @@ class JSONModel {
     function createStatement () {
         if ($this->isView) {
             return (
-                "REPLACE VIEW "
+                "CREATE OR REPLACE VIEW "
                 .$this->sql->prefixedIdentifier($this->qualifiedName())
                 ." AS ".$this->columns
                 );

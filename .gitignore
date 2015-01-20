@@ -1,2 +1,5 @@
-# exclude dependencies
+# exclude private files, source dependencies and test outputs.
+priv/*
 deps/*
+test/sites/*/out/*
+test/sites/*/run/*

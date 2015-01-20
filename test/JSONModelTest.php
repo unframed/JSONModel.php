@@ -11,8 +11,8 @@ class JSONModelTest {
     public $tables;
     public $views;
     public $types;
-    function __construct ($prefix, $tables, $views, $types) {
-        $this->sql = new SQLAbstractTest($prefix);
+    function __construct ($sql, $tables, $views, $types) {
+        $this->sql = $sql;
         $this->tables = $tables;
         $this->views = $views;
         $this->types = $types;
