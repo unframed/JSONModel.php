@@ -2,7 +2,7 @@ DEPS = deps \
 	deps/test-more-php \
 	deps/test_sites.php \
 	deps/JSONMessage.php \
-	deps/SQLAbstract.php \
+	deps/SQLAbstract.php
 
 test: pull
 
@@ -30,4 +30,3 @@ deps/SQLAbstract.php:
 	git clone \
 		https://github.com/unframed/SQLAbstract.php.git \
 		deps/SQLAbstract.php
-
