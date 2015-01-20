@@ -1,0 +1,8 @@
+{
+	"httpHost": "127.0.0.1:8191",
+	"httpServer": "apache2",
+	"gitSource": "deps/WordPress",
+	"gitBranch": "4.0.1",
+	"links": {},
+	"testUnits": []
+}

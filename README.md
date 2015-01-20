@@ -48,10 +48,16 @@ class Task extends JSONMessage {
     }
 }
 
+?>
+~~~
+
+~~~php
+<?php
+
 class Tasks extends JSONModel {
     function __construct ($sqlAbstract) {
         parent::__construct(
-            $sqlAbstract, 'Task', 'task', array(
+            $sqlAbstract, 'test', 'task', array(
                 'task_name' => 'VARCHAR(255) NOT NULL',
                 'task_created_at' => 'INTEGER UNSIGNED NOT NULL',
                 'task_modified_at' => 'INTEGER UNSIGNED',
@@ -62,10 +68,13 @@ class Tasks extends JSONModel {
                 'task_deleted_at' => 'intval'
             ));
     }
+    function message ($map, $encoded=NULL) {
+        return new Task($message, $encoded);
+    }
     function addNew ($map) {
         $task = $this->message($map);
         if ($task->createdAt(time()) !== NULL) {
-            throw new Exception(
+            throw $this->exception(
                 "Expected task_created_at to be NULL before insert"
                 );
         }
@@ -75,7 +84,7 @@ class Tasks extends JSONModel {
     function names ($ids=NULL) {
         return array_map(function ($hello) {
             return $hello->name();
-        }, $this->fetchAll($ids));
+        }, $this->fetchByIds($ids));
     }
 }
 
@@ -90,12 +99,12 @@ class Tasks extends JSONModel {
 <?php
 
 class Application {
-    private $sqlAbstract;
+    private $_sql;
     function __construct() {
-        $this->sqlAbstract = new SQLAbstractPDO();
+        $this->_sql = new SQLAbstractPDO();
     }
     function tasks () {
-        return new Tasks($this->sqlAbstract);
+        return new Tasks($this->_sql);
     }
 }
 
@@ -109,8 +118,8 @@ class Application {
 ~~~php
 <?php
 
-function insertTask (Tasks $tasks, JSONMessage $message) {
-    return $tasks->insert($message);
+function insertTask (Application $app, JSONMessage $message) {
+    return $app->tasks()->insert($message);
 }
 
 ?>
@@ -120,17 +129,11 @@ function insertTask (Tasks $tasks, JSONMessage $message) {
 ~~~php
 <?php
 
-function listTasksNames (Tasks $tasks, JSONMessage $message) {
-    return $tasks->names($message->getList('ids'));
+function listTasksNames (Application $app, JSONMessage $message) {
+    return $app->tasks()->names($message->getList('ids'));
 }
 
 ?>
 ~~~
 
 ...
-
-Requirements
----
-...
-
-- support PHP 5.2 and prefixed table names

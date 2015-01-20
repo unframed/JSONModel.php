@@ -1,0 +1,1 @@
+python deps/test_sites.php/test_press.py $1 $2 $3
