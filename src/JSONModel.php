@@ -150,6 +150,14 @@ class JSONModel {
             return $this->message($this->cast($row, array()));
         }
     }
+    function ids ($options=array()) {
+        list($sql, $params) = $this->sql->whereParams($options);
+        return array_map('intval', $this->sql->fetchAllColumn((
+            "SELECT ".$this->sql->identifier($this->primary)
+            ." FROM ".$this->sql->prefixedIdentifier($this->qualifiedName())
+            ." WHERE ".$where
+            ), $params));
+    }
     /**
      *
      */

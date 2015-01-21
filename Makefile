@@ -9,6 +9,7 @@ test: pull
 	./press up wp
 	php test/create.php
 	php test/insert.php
+	php test/update.php
 	./press down wp
 
 pull: ${DEPS}

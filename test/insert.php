@@ -8,7 +8,7 @@ function test_insert ($test, $sql, $message) {
     $task = $tasks->insert($message);
     $saved = json_encode($task->map);
     $stored = $tasks->fetchById($task->getInt('task'));
-    $intersect = new JSONMessage(array_intersect_assoc($stored->map, $task->map));
+    $intersect = new JSONMessage(@array_intersect_assoc($stored->map, $task->map));
     $test->is($intersect->uniform(), $task->uniform(), $saved);
 }
 
