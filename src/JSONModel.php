@@ -53,10 +53,10 @@ class JSONModel {
         $m = new JSONMessage($options);
         $this->name = $m->getString('name');
         $this->columns = $m->getDefault('columns', array());
+        $this->isView = (is_string($this->columns));
         $this->primary = $m->getString('primary', $this->name);
         $this->jsonColumn = $m->getString('jsonColumn', $this->name.'_json');
         $this->domain = $m->getString('domain', '');
-        $this->isView = (is_string($this->columns));
     }
     /**
      * Return a new exception to be throwed by the model's methods.
@@ -115,19 +115,21 @@ class JSONModel {
         $this->sql->execute($this->createStatement());
     }
     /**
-     * Cast a row into a map using the type caster defined for this model.
+     * Cast a row into a map using the types defined for this model.
      *
      * @param array $row
      * @return JSONMessage
      */
     function cast ($row, $map) {
         foreach ($row as $column => $value) {
-            if (array_key_exists($column, $this->types)) {
-                $map[$column] = call_user_func_array(
-                    $this->types[$column], array($row[$column])
-                    );
-            } else {
-                $map[$column] = $row[$column];
+            if ($column != $this->jsonColumn) {
+                if (array_key_exists($column, $this->types) && $value !== NULL) {
+                    $map[$column] = call_user_func_array(
+                        $this->types[$column], array($row[$column])
+                        );
+                } else {
+                    $map[$column] = $row[$column];
+                }
             }
         }
         return $map;
@@ -140,10 +142,9 @@ class JSONModel {
      * @return JSONMessage
      */
     function map ($row) {
-        if (array_key_exists($this->jsonColumn, $row)) {
+        if ($this->jsonColumn !== NULL && array_key_exists($this->jsonColumn, $row)) {
             $encoded = $row[$this->jsonColumn];
             $map = json_decode($encoded, TRUE);
-            unset($row[$this->jsonColumn]);
             return $this->message($this->cast($row, $map), $encoded);
         } else {
             return $this->message($this->cast($row, array()));
@@ -167,14 +168,21 @@ class JSONModel {
         return array_map(array($this, 'map'), $rows);
     }
     /**
+     * Return the ordered and limited set of relations selected by $options,
+     * mapped in a list of messages.
      *
+     * @param array $options
+     * @return int
      */
     function select ($options=array()) {
         $rows = $this->sql->select($this->qualifiedName(), $options);
         return array_map(array($this, 'map'), $rows);
     }
     /**
+     * Return the count of rows in the table or in a set selected by $options.
      *
+     * @param array $options
+     * @return int
      */
     function count ($options=array()) {
         return $this->sql->count($this->qualifiedName(), $options);
@@ -239,7 +247,7 @@ class JSONModel {
      * Insert a message's into this model's table, return the number of affected rows.
      *
      * @param JSONMessage $message
-     * @return integer
+     * @return int
      */
     function replace ($message) {
         // check that an identifier is set
@@ -251,6 +259,15 @@ class JSONModel {
             $this->qualifiedName(), $this->row($message->map)
             );
     }
+    /**
+     * Update values in this model's table, either: for the set of relations selected
+     * if $options have been provided; or for the single relation identified by
+     * a primary key in the given $values, then return the number of affected rows.
+     *
+     * @param array $values
+     * @param array $options
+     * @return int
+     */
     function update ($values, $options=NULL) {
         // supply the default options: update by primary key
         if ($options === NULL) {

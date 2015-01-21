@@ -19,6 +19,7 @@ class Tasks extends JSONModel {
     }
     static function types() {
         return array(
+            'task' => 'intval',
             'task_scheduled_for' => 'intval',
             'task_completed_at' => 'intval',
             'task_created_at' => 'intval',
