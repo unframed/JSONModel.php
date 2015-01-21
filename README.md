@@ -18,20 +18,44 @@ The `JSONModel` class implements the Data Mapper pattern to map between SQL rela
 Acting as model controller, `JSONModel` provides methods to insert, replace and update JSON messages in an SQL database.
 
 ~~~
-insert($message)
-replace($message)
-update($id, $map)
+insert($message):message
+replace($message):int
+update($map, $options):int
 ~~~
 
 Acting as view controller, `JSONModel` also provides methods to fetch one, fetch all, select, filter and count relations from an SQL table or an SQL view.
 
 ~~~
-fetchById($id)
-fetchByIds($ids)
-select($options)
-count($options)
+fetchById($id):message
+fetchByIds($ids):array
+select($options):array
+count($options):int
 ~~~
 
+...
+
+~~~json
+{
+    "where": ""
+    "params": [],
+    "filter": {},
+    "like": {}
+}
+~~~
+...
+
+~~~json
+{
+    "columns": [],
+    "where": ""
+    "params": [],
+    "filter": {},
+    "like": {},
+    "order": [],
+    "limit": 30,
+    "offset": 0
+}
+~~~
 ...
 
 ### Message
