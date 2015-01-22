@@ -53,10 +53,19 @@ class JSONModel {
         $m = new JSONMessage($options);
         $this->name = $m->getString('name');
         $this->columns = $m->getDefault('columns', array());
-        $this->isView = (is_string($this->columns));
         $this->primary = $m->getString('primary', $this->name);
-        $this->jsonColumn = $m->getString('jsonColumn', $this->name.'_json');
         $this->domain = $m->getString('domain', '');
+        $this->isView = (is_string($this->columns));
+        if ($m->has('jsonColumn')) {
+            $this->jsonColumn = $m->getString('jsonColumn');
+        } elseif (
+            !is_string($this->columns)
+            && array_key_exists($this->name.'_json', $this->columns)
+            ) {
+            $this->jsonColumn = $this->name.'_json';
+        } else {
+            $this->jsonColumn = NULL;
+        }
     }
     /**
      * Return a new exception to be throwed by the model's methods.
@@ -89,30 +98,39 @@ class JSONModel {
     /**
      *
      */
-    function createStatement () {
-        if ($this->isView) {
-            return (
-                "CREATE OR REPLACE VIEW "
-                .$this->sql->prefixedIdentifier($this->qualifiedName())
-                ." AS ".$this->columns
-                );
-        } else {
-            $columns = array();
-            foreach ($this->columns as $name => $statement) {
-                array_push($columns, (
-                    $this->sql->identifier($name)
-                    ." ".$statement
-                    ));
-            }
-            return (
-                "CREATE TABLE IF NOT EXISTS "
-                .$this->sql->prefixedIdentifier($this->qualifiedName())
-                ." (\n\t".implode(",\t\n", $columns)."\t)\n"
-                );
-        }
+    function createViewStatement () {
+        return (
+            "CREATE OR REPLACE VIEW "
+            .$this->sql->prefixedIdentifier($this->qualifiedName())
+            ." AS ".$this->columns
+            );
     }
+    /**
+     *
+     */
+    function createTableStatement () {
+        $columns = array();
+        foreach ($this->columns as $name => $statement) {
+            array_push($columns, (
+                $this->sql->identifier($name)
+                ." ".$statement
+                ));
+        }
+        return (
+            "CREATE TABLE IF NOT EXISTS "
+            .$this->sql->prefixedIdentifier($this->qualifiedName())
+            ." (\n\t".implode(",\t\n", $columns)."\t)\n"
+            );
+    }
+    /**
+     * Create if it does not exists or replace this model's table or view.
+     */
     function create () {
-        $this->sql->execute($this->createStatement());
+        if ($this->isView) {
+            return $this->sql->execute($this->createViewStatement());
+        } else {
+            return $this->sql->execute($this->createTableStatement());
+        }
     }
     /**
      * Cast a row into a map using the types defined for this model.
@@ -182,8 +200,8 @@ class JSONModel {
      * @param array $options
      * @return int
      */
-    function select ($options=array()) {
-        $rows = $this->sql->select($this->qualifiedName(), $options);
+    function select ($options=array(), $safe=TRUE) {
+        $rows = $this->sql->select($this->qualifiedName(), $options, $safe);
         return array_map(array($this, 'map'), $rows);
     }
     /**
@@ -192,8 +210,8 @@ class JSONModel {
      * @param array $options
      * @return int
      */
-    function count ($options=array()) {
-        return $this->sql->count($this->qualifiedName(), $options);
+    function count ($options=array(), $safe=TRUE) {
+        return $this->sql->count($this->qualifiedName(), $options, $safe);
     }
     /**
      * Map a message's map into a row, eventually encoding a JSON column if it
@@ -204,7 +222,7 @@ class JSONModel {
      */
     function row ($map) {
         if ($this->isView) {
-            throw $this->exception('Cannot insert nor replace in an SQL view');
+            throw $this->exception('Cannot insert nor replace in view');
         }
         if ($this->jsonColumn === NULL) {
             return array_intersect_key($map, $this->columns);
@@ -238,7 +256,7 @@ class JSONModel {
         // insert existing columns and save the inserted id
         $table = $this->qualifiedName();
         $id = intval($this->sql->insert(
-            $table, array_intersect_key($message->map, $this->columns)
+            $table, @array_intersect_key($message->map, $this->columns)
             ));
         // update the message's map
         $message->map[$this->primary] = $id;
@@ -276,7 +294,7 @@ class JSONModel {
      * @param array $options
      * @return int
      */
-    function update ($values, $options=NULL) {
+    function update ($values, $options=NULL, $safe=TRUE) {
         // supply the default options: update by primary key
         if ($options === NULL) {
             if (!array_key_exists($this->primary, $values)) {
@@ -287,13 +305,27 @@ class JSONModel {
                     $this->primary => $values[$this->primary]
                     )
                 );
+            unset($values[$this->primary]);
+        } elseif (array_key_exists($this->primary, $values)) {
+            throw $this->exception('Cannot set the primary key');
         }
-        // don't set the primary key, ever !
-        unset($values[$this->primary]);
         // update a set of $values in this model's table for the relations selected
         // by the options.
         return $this->sql->update(
-            $this->qualifiedName(), $values, $options
+            $this->qualifiedName(), $values, $options, $safe
             );
+    }
+    /**
+     * Delete rows from this model's table using select options and return
+     * the number of affected rows.
+     *
+     * @param array $options
+     * @return int
+     */
+    function delete ($options, $safe=TRUE) {
+        if ($this->isView) {
+            throw $this->exception('Cannot delete from view');
+        }
+        return $this->sql->delete($this->qualifiedName(), $options, $safe);
     }
 }
