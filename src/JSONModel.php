@@ -52,14 +52,14 @@ class JSONModel {
         $this->types = $types;
         $m = new JSONMessage($options);
         $this->name = $m->getString('name');
-        $this->columns = $m->getDefault('columns', array());
+        $this->columns = $m->getDefault('columns', NULL);
         $this->primary = $m->getString('primary', $this->name);
         $this->domain = $m->getString('domain', '');
         $this->isView = (is_string($this->columns));
         if ($m->has('jsonColumn')) {
             $this->jsonColumn = $m->getString('jsonColumn');
         } elseif (
-            !is_string($this->columns)
+            is_array($this->columns)
             && array_key_exists($this->name.'_json', $this->columns)
             ) {
             $this->jsonColumn = $this->name.'_json';
@@ -132,6 +132,16 @@ class JSONModel {
             return $this->sql->execute($this->createTableStatement());
         }
     }
+    function column ($options=array(), $safe=TRUE) {
+        if (!array_key_exists('columns', $options)) {
+            $options['columns'] = array($this->primary);
+        }
+        return $this->sql->column($this->qualifiedName(), $options, $safe);
+    }
+    function ids ($options=array(), $safe=TRUE) {
+        $options['columns'] = array($this->primary);
+        return $this->column($options, $safe);
+    }
     /**
      * Cast a row into a map using the types defined for this model.
      *
@@ -167,14 +177,6 @@ class JSONModel {
         } else {
             return $this->message($this->cast($row, array()));
         }
-    }
-    function ids ($options=array()) {
-        list($sql, $params) = $this->sql->whereParams($options);
-        return array_map('intval', $this->sql->fetchAllColumn((
-            "SELECT ".$this->sql->identifier($this->primary)
-            ." FROM ".$this->sql->prefixedIdentifier($this->qualifiedName())
-            ." WHERE ".$where
-            ), $params));
     }
     /**
      *
@@ -214,41 +216,16 @@ class JSONModel {
         return $this->sql->count($this->qualifiedName(), $options, $safe);
     }
     /**
-     * Map a message's map into a row, eventually encoding a JSON column if it
-     * exists in the model.
-     *
-     * @param array $map
-     * @return array
-     */
-    function row ($map) {
-        if ($this->isView) {
-            throw $this->exception('Cannot insert nor replace in view');
-        }
-        if ($this->jsonColumn === NULL) {
-            return array_intersect_key($map, $this->columns);
-        }
-        $row = array();
-        $json = array();
-        foreach ($map as $column => $value) {
-            if ($column != $this->jsonColumn) {
-                if (is_scalar($value) && array_key_exists($column, $this->columns)) {
-                    $row[$column] = $value;
-                    $json[$column] = $value;
-                } else {
-                    $json[$column] = $value;
-                }
-            }
-        }
-        $row[$this->jsonColumn] = json_encode($json);
-        return $row;
-    }
-    /**
-     * Insert a message's into this model's table, return the inserted ID.
+     * Insert a message's into this model's table, return the inserted ID and
+     * maybe update the JSON column if it is defined.
      *
      * @param JSONMessage $message
      * @return integer
      */
     function insert ($message) {
+        if ($this->isView) {
+            throw $this->exception('Cannot insert in a view');
+        }
         // check that the new message does not have a primary key set.
         if ($message->has($this->primary)) {
             throw $this->exception('Cannot insert with an identifier set');
@@ -270,19 +247,58 @@ class JSONModel {
         return $message;
     }
     /**
-     * Insert a message's into this model's table, return the number of affected rows.
+     * Map a message's map into a row, eventually encoding a JSON column if it
+     * exists in the model.
+     *
+     * @param array $map
+     * @param string $jsonColumn
+     * @param array $columns
+     * @return array
+     */
+    static function row ($map, $jsonColumn, $columns) {
+        if ($jsonColumn === NULL) {
+            if ($columns === NULL) {
+                return $map;
+            }
+            return array_intersect_key($map, $columns);
+        }
+        $row = array();
+        $json = array();
+        foreach ($map as $column => $value) {
+            if ($column != $jsonColumn) {
+                if (is_scalar($value) && (
+                    !is_array($columns)
+                    || array_key_exists($column, $columns)
+                    )) {
+                    $row[$column] = $value;
+                    $json[$column] = $value;
+                } else {
+                    $json[$column] = $value;
+                }
+            }
+        }
+        $row[$jsonColumn] = json_encode($json);
+        return $row;
+    }
+    /**
+     * Replace a message's into this model's table, return the number of affected rows.
      *
      * @param JSONMessage $message
      * @return int
      */
     function replace ($message) {
+        if ($this->isView) {
+            throw $this->exception('Cannot replace in a view');
+        }
         // check that an identifier is set
         if (!$message->has($this->primary)) {
             throw $this->exception('Cannot replace without an identifier set');
         }
         // replace the whole message's map, maybe serialize in the *_json column
         return $this->sql->replace(
-            $this->qualifiedName(), $this->row($message->map)
+            $this->qualifiedName(), self::row(
+                $message->map, $this->jsonColumn, $this->columns
+                )
             );
     }
     /**
@@ -295,6 +311,9 @@ class JSONModel {
      * @return int
      */
     function update ($values, $options=NULL, $safe=TRUE) {
+        if ($this->isView) {
+            throw $this->exception('Cannot update in a view');
+        }
         // supply the default options: update by primary key
         if ($options === NULL) {
             if (!array_key_exists($this->primary, $values)) {
