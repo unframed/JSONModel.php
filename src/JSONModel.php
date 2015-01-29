@@ -226,7 +226,7 @@ class JSONModel {
     }
     private static function _filterScalarAndNull ($map) {
         $values = array();
-        foreach ($values as $key => $value) {
+        foreach ($map as $key => $value) {
             if ($value === NULL || is_scalar($value)) {
                 $values[$key] = $value;
             }
