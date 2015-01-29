@@ -136,10 +136,19 @@ class JSONModel {
         if (!array_key_exists('columns', $options)) {
             $options['columns'] = array($this->primary);
         }
-        return $this->sql->column($this->qualifiedName(), $options, $safe);
+        $results = $this->sql->column($this->qualifiedName(), $options, $safe);
+        $column = $options['columns'][0];
+        if (array_key_exists($column, $this->types)) {
+            return array_map($types[$column], $results);
+        }
+        return $results;
     }
     function ids ($options=array(), $safe=TRUE) {
         $options['columns'] = array($this->primary);
+        return $this->column($options, $safe);
+    }
+    function json ($options=array(), $safe=TRUE) {
+        $options['columns'] = array($this->jsonColumn);
         return $this->column($options, $safe);
     }
     /**
@@ -215,6 +224,15 @@ class JSONModel {
     function count ($options=array(), $safe=TRUE) {
         return $this->sql->count($this->qualifiedName(), $options, $safe);
     }
+    private static function _filterScalarAndNull ($map) {
+        $values = array();
+        foreach ($values as $key => $value) {
+            if ($value === NULL || is_scalar($value)) {
+                $values[$key] = $value;
+            }
+        }
+        return $values;
+    }
     /**
      * Insert a message's into this model's table, return the inserted ID and
      * maybe update the JSON column if it is defined.
@@ -230,11 +248,17 @@ class JSONModel {
         if ($message->has($this->primary)) {
             throw $this->exception('Cannot insert with an identifier set');
         }
-        // insert existing columns and save the inserted id
+        // insert existing columns and save the inserted id, eventually typed
         $table = $this->qualifiedName();
-        $id = intval($this->sql->insert(
-            $table, @array_intersect_key($message->map, $this->columns)
-            ));
+        if ($this->columns === NULL) {
+            $map = self::_filterScalarAndNull($message->map);
+        } else {
+            $map = array_intersect_key($message->map, $this->columns);
+        }
+        $id = $this->sql->insert($table, $map);
+        if (array_key_exists($this->primary, $this->types)) {
+            $id = call_user_func_array($this->types[$this->primary], array($id));
+        }
         // update the message's map
         $message->map[$this->primary] = $id;
         if ($this->jsonColumn !== NULL) {
