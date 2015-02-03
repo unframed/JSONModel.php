@@ -7,6 +7,7 @@ From basic CRUD to filtered pagination, safely by default.
 Requirements
 ---
 - map between JSON messages and SQL relations 
+- support composite SQL primary keys and non-scalar properties of JSON messages
 - provide a few methods to query tables and views in one controller class
 - with good names and well named options as first or second argument
 - use JSONMessage.php to box results and extend application classes
@@ -50,7 +51,7 @@ class Tasks extends JSONModel {
         parent::__construct($sqlAbstract, self::types(), array(
             'name' => 'task',
             'columns' => self::columns(),
-            'primary' => 'task_id'
+            'primary' => array('task_id')
             ));
     }
 }
@@ -75,7 +76,7 @@ The JSONModel constructor can be applied differently, but the pattern of static 
 {
     "name": "task",
     "columns": [],
-    "primary": "task_id",
+    "primary": ["task_id"],
     "jsonColumn": "task_json",
     "domain": "test_"
 }

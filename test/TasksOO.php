@@ -7,7 +7,7 @@ class Task extends JSONMessage {}
 class Tasks extends JSONModel {
     static function columns () {
         return array(
-            'task' => 'INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY',
+            'task' => 'INTEGER NOT NULL AUTO_INCREMENT',
             'task_name' => 'VARCHAR(255) NOT NULL',
             'task_scheduled_for' => 'INTEGER UNSIGNED NOT NULL',
             'task_completed_at' => 'INTEGER UNSIGNED',
@@ -17,7 +17,7 @@ class Tasks extends JSONModel {
             'task_json' => 'MEDIUMTEXT'
             );
     }
-    static function types() {
+    static function types () {
         return array(
             'task' => 'intval',
             'task_scheduled_for' => 'intval',
@@ -27,6 +27,9 @@ class Tasks extends JSONModel {
             'task_deleted_at' => 'intval'
             );
     }
+    static function primary () {
+        return array('task');
+    }
     function message($map, $encoded=NULL) {
         return new Task($map, $encoded);
     }
@@ -34,7 +37,8 @@ class Tasks extends JSONModel {
         parent::__construct($sql, $types, array(
             'name' => 'task',
             'columns' => self::columns(),
-            'domain' => 'test_'
+            'domain' => 'test_',
+            'primary' => self::primary()
             ));
     }
 }
@@ -66,7 +70,7 @@ class TasksView extends JSONModel {
         parent::__construct($sql, $types, array(
             'name' => 'task_view',
             'columns' => self::columns($sql),
-            'primary' => 'task',
+            'primary' => Tasks::primary(),
             'domain' => 'test_'
             ));
     }

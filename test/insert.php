@@ -17,7 +17,7 @@ function test_insert_free ($test, $sql, $message) {
         'domain' => 'test_',
         'name' => 'task',
         'columns' => NULL,
-        'primary' => 'task',
+        'primary' => array('task'),
         'jsonColumn' => 'task_json'
     ));
     $task = $tasks->insert($message);
