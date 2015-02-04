@@ -4,6 +4,55 @@
  * A model controller.
  */
 class JSONModel {
+
+    // how JSONModel database tables and views get created and upgraded, iteratively.
+
+    final static function repairSchemaIter ($sql, $primary, $tables, $views, $domain) {
+        $exist = $sql->showTables($domain);
+        foreach ($tables as $table => $columns) {
+            if (in_array($sql->prefix($table), $exist)) {
+                $newColumns = array_diff_key($columns, $sql->showColumns($table));
+                if (count($newColumns) > 0) {
+                    $sql->execute($sql->alterTableStatement($table, $newColumns));
+                    return TRUE;
+                }
+            } else {
+                $sql->execute($sql->createTableStatement(
+                    $domain.$table, $columns, $primary[$table]
+                ));
+            }
+        }
+        foreach ($views as $view => $select) {
+            $sql->execute($sql->createViewStatement($domain.$view, $select));
+        }
+        return FALSE;
+    }
+
+    // infer a schema of primary keys, tables and views from a list JSONModel
+    // (... and preliminary SQL views ,-)
+
+    final static function schema ($models, $views) {
+        $primary = array();
+        $tables = array();
+        foreach($models as $controller) {
+            $name = $controller->qualifiedName();
+            if ($controller->isView) {
+                $views[$name] = $controller->columns;
+            } else {
+                $primary[$name] = $controller->primary;
+                $tables[$name] = $controller->columns;
+            }
+        }
+        return array($primary, $tables, $views);
+    }
+
+    // create or repair the database for a set of models, iteratively.
+
+    final static function repair ($sql, $models, $views=array(), $domain='') {
+        list($primary, $tables, $views) = self::schema($models, $views);
+        return repairSchemaIter($sql, $primary, $tables, $views, $domain);
+    }
+
     /**
      * This model controller's SQL Abstraction Layer
      *
@@ -92,56 +141,25 @@ class JSONModel {
      *
      * @return string
      */
-    function qualifiedName () {
+    final function qualifiedName () {
         return $this->domain.$this->name;
-    }
-    /**
-     *
-     */
-    function createViewStatement () {
-        return (
-            "CREATE OR REPLACE VIEW "
-            .$this->sql->prefixedIdentifier($this->qualifiedName())
-            ." AS ".$this->columns
-            );
-    }
-    /**
-     *
-     */
-    function createTableStatement () {
-        $sql = $this->sql;
-        $columns = array();
-        foreach ($this->columns as $name => $statement) {
-            array_push($columns, $sql->identifier($name)." ".$statement);
-        }
-        if (count($this->primary) === 1) {
-            array_push($columns, "PRIMARY KEY (".$sql->identifier($this->primary[0]).")");
-        } elseif (count($this->primary) > 1) {
-            array_push($columns, "PRIMARY KEY (".implode(
-                ", ", array_map(array($sql, 'identifier'), $this->primary)
-                ).")");
-        } else {
-            throw $this->exception(
-                "Missing primary key(s) in model with name ".$this->name
-                );
-        }
-        return (
-            "CREATE TABLE IF NOT EXISTS "
-            .$this->sql->prefixedIdentifier($this->qualifiedName())
-            ." (\n\t".implode(",\t\n", $columns)."\n\t)\n"
-            );
     }
     /**
      * Create if it does not exists or replace this model's table or view.
      */
-    function create () {
+    final function create () {
+        $sql = $this->sql;
         if ($this->isView) {
-            return $this->sql->execute($this->createViewStatement());
+            return $sql->execute($sql->createViewStatement(
+                $this->qualifiedName(), $this->columns, $this->primary
+                ));
         } else {
-            return $this->sql->execute($this->createTableStatement());
+            return $sql->execute($sql->createTableStatement(
+                $this->qualifiedName(), $this->columns, $this->primary
+                ));
         }
     }
-    function column ($options=array(), $safe=TRUE) {
+    final function column ($options=array(), $safe=TRUE) {
         if (!array_key_exists('columns', $options)) {
             $options['columns'] = array($this->primary);
         }
@@ -152,7 +170,7 @@ class JSONModel {
         }
         return $results;
     }
-    function ids ($options=array(), $safe=TRUE) {
+    final function ids ($options=array(), $safe=TRUE) {
         $options['columns'] = $this->primary;
         if (count($this->primary) === 1) {
             return $this->column($options, $safe);
@@ -164,7 +182,7 @@ class JSONModel {
                 );
         }
     }
-    function json ($options=array(), $safe=TRUE) {
+    final function json ($options=array(), $safe=TRUE) {
         $options['columns'] = array($this->jsonColumn);
         return $this->column($options, $safe);
     }
@@ -174,7 +192,7 @@ class JSONModel {
      * @param array $row
      * @return JSONMessage
      */
-    function cast ($row, $map) {
+    final function cast ($row, $map) {
         foreach ($row as $column => $value) {
             if ($column != $this->jsonColumn) {
                 if (array_key_exists($column, $this->types) && $value !== NULL) {
@@ -195,7 +213,7 @@ class JSONModel {
      * @param array $row
      * @return JSONMessage
      */
-    function map ($row) {
+    final function map ($row) {
         if ($this->jsonColumn !== NULL && array_key_exists($this->jsonColumn, $row)) {
             $encoded = $row[$this->jsonColumn];
             $map = json_decode($encoded, TRUE);
@@ -204,7 +222,7 @@ class JSONModel {
             return $this->message($this->cast($row, array()));
         }
     }
-    private function assertIdNotScalarOrNull ($id) {
+    final private function assertIdNotScalarOrNull ($id) {
         if (is_scalar($id)) {
             return TRUE;
         } elseif (is_null($id)) {
@@ -213,12 +231,12 @@ class JSONModel {
             throw $this->exception("The primary key(s) must scalar");
         }
     }
-    private function primaryKeys () {
+    final private function primaryKeys () {
         return array_combine(
             $this->primary, array_fill(0, count($this->primary), NULL)
             );
     }
-    private function assertPrimary ($keys) {
+    final private function assertPrimary ($keys) {
         return (count($this->primary) === count(array_filter(
             array_values(array_intersect_key($keys, $this->primaryKeys())),
             'is_scalar'
@@ -227,7 +245,7 @@ class JSONModel {
     /**
      *
      */
-    function fetchById ($id) {
+    final function fetchById ($id) {
         if (count($this->primary) === 1) {
             $this->assertIdNotScalarOrNull($id);
             return $this->map($this->sql->getRowById(
@@ -262,7 +280,7 @@ class JSONModel {
     /**
      *
      */
-    function fetchByIds ($ids) {
+    final function fetchByIds ($ids) {
         if (count($this->primary) === 1) {
             $rows = $this->sql->getRowsByIds(
                 $this->qualifiedName(), $this->primary[0], $ids
@@ -358,7 +376,7 @@ class JSONModel {
      * @param array $columns
      * @return array
      */
-    static function row ($map, $jsonColumn, $columns) {
+    final static function row ($map, $jsonColumn, $columns) {
         if ($jsonColumn === NULL) {
             if ($columns === NULL) {
                 return $map;
@@ -454,4 +472,5 @@ class JSONModel {
         }
         return $this->sql->delete($this->qualifiedName(), $options, $safe);
     }
+
 }
