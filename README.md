@@ -4,7 +4,7 @@ JSONModel.php
 
 "*People Love ORMs*". 
 
-The `JSONModel` class is a base for SQL table and view controllers, ladden with methods to safely query relations as objects (of type `JSONMessage`) with typed properties (eventually including non-scalar). There is enough implemented in that base class to get its applications covered from iterative schema updates through CRUD, paginated search and filter.
+The `JSONModel` class is a base for SQL table and view controllers providing methods to safely query relations as objects (of type `JSONMessage`) with typed properties (eventually including non-scalar). There is enough implemented in that base class to get its applications covered from iterative schema updates through CRUD, paginated search and filter.
 
 Without SQL injections.
 
@@ -43,7 +43,7 @@ Here's what a `Tasks` controller could look like, using and extending `__constru
 <?php
 
 class Tasks extends JSONModel {
-    static function columns () {
+    static function columns (SQLAbstract $sql) {
         return array(
             'task_id' => 'INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY',
             'task_name' => 'VARCHAR(255) NOT NULL',
@@ -52,7 +52,10 @@ class Tasks extends JSONModel {
             'task_created_at' => 'INTEGER UNSIGNED NOT NULL',
             'task_modified_at' => 'INTEGER UNSIGNED',
             'task_deleted_at' => 'INTEGER UNSIGNED'
-            );
+        );
+    }
+    static function primary () {
+        return array('task_id');
     }
     static function types() {
         return array(
@@ -64,11 +67,11 @@ class Tasks extends JSONModel {
             'task_deleted_at' => 'intval'
             );
     }
-    function __construct ($sqlAbstract) {
-        parent::__construct($sqlAbstract, self::types(), array(
+    function __construct (SQLAbstract $sql) {
+        parent::__construct($sql, self::types(), array(
             'name' => 'task',
-            'columns' => self::columns(),
-            'primary' => array('task_id')
+            'columns' => self::columns($sql),
+            'primary' => self::primary()
             ));
     }
 }
@@ -76,7 +79,7 @@ class Tasks extends JSONModel {
 ?>
 ~~~
 
-The JSONModel constructor can be applied differently, but the pattern of static `columns` and `types` allow to keep columns and type definitions in its controller's class.
+The `JSONModel` constructor can be applied differently, but the pattern of static `columns($sql)`, `primary()` and `types()` methods is the most idiomatic as it enables to localize the table or view definitions along with their controller classes and also allows to centralize type definitions in a single ancestor class.
 
 #### Model Options
 
