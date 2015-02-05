@@ -2,13 +2,31 @@ JSONModel.php
 ===
 [![Build Status](https://travis-ci.org/unframed/JSONModel.php.svg)](https://travis-ci.org/unframed/JSONModel.php)
 
-From basic CRUD to filtered pagination, safely by default.
+"*People Love ORMs*". 
+
+The `JSONModel` class provides a base PHP class that:
+
+- maps typed JSON messages in and out of a SQL table or view 
+- updates and deletes the mapped relations in a SQL table
+- creates or alters a table, creates or replaces a view 
+- leverages [SQLAbstract](https://github.com/unframed/SQLAbstract.php) to guard against SQL injection 
+
+Beware that having one PHP class for each table or view used by the application can be both a blessing and a curse.
+
+A blessing for the accessibility of the data model sources and for the opportunity of code reuse between classes.
+
+A curse of fossil classes, side effects and bloated dependencies.
+
+So, `JSONModel` was never intended to be more than a clever JSON data mapper bundled with a practical SQL table and view controller that will get its application covered from iterative schema updates through CRUD, paginated search and filter without SQL injections.
+
+I repeat, without SQL injections.
 
 Requirements
 ---
-- map between JSON messages and SQL relations 
+- implement iterative schema updates (aka: database repair) 
+- map between JSON messages, SQL relations and eventually PHP classes
 - support composite SQL primary keys and non-scalar properties of JSON messages
-- provide a few methods to query tables and views in one controller class
+- provide a few methods to query tables and views in one base controller class
 - with good names and well named options as first or second argument
 - use JSONMessage.php to box results and extend application classes
 - use SQLAbstract.php to query, safely by default

@@ -151,7 +151,7 @@ class JSONModel {
         $sql = $this->sql;
         if ($this->isView) {
             return $sql->execute($sql->createViewStatement(
-                $this->qualifiedName(), $this->columns, $this->primary
+                $this->qualifiedName(), $this->columns
                 ));
         } else {
             return $sql->execute($sql->createTableStatement(
