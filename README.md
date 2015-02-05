@@ -15,6 +15,10 @@ Requirements
 - use [SQLAbstract](https://github.com/unframed/SQLAbstract.php) to query safely and execute everywhere
 - support PHP 5.3
 
+Credits
+---
+To [badshark](https://github.com/badshark), [JoN1oP](https://github.com/JoN1oP) and [mrcasual](https://github.com/mrcasual) for code reviews, tests and reports.
+
 Synopis
 ---
 Let's assume a task scheduler as a database application, with a single tasks table.
@@ -192,7 +196,6 @@ Deleting all due tasks is as simple :
 <?php
 
 function deleteDue ($tasks) {
-    $now = time();
     // update the tasks in that set of identifiers, at once. 
     $tasks->delete(array(
         'where' => 'task_scheduled_for < NOW()'
