@@ -4,22 +4,6 @@ JSONModel.php
 
 "*People Love ORMs*". 
 
-The `JSONModel` class is a base for SQL table and view controllers providing methods to safely query relations as objects (of type `JSONMessage`) with typed properties (eventually including non-scalar). There is enough implemented in that base class to get its applications covered from iterative schema updates through CRUD, paginated search and filter.
-
-Without SQL injections.
-
-### Where Less Is More
-
-Following the example of `SQLAbstract.php`, applications of `JSONModel.php` must assumes that when anything more complex than an SQL `WHERE` expression is required to select relations then one or more SQL views should be created.
-
-Use views and avoid the time-sink of maintaining complicated ORM method chain invocations entangled with hidden SQL queries in procedural PHP code, as I avoided the time-sink of writing yet another sluggish ORM by making that assumption.
-
-Beware that having one PHP class for each table or view can be both a blessing and a curse.
-
-A blessing for the accessibility of the data model sources and for the opportunity of code reuse between classes.
-
-A curse of fossil classes, side effects and bloated dependencies.
-
 Requirements
 ---
 - implement iterative schema updates (aka: database repair) 
@@ -260,3 +244,22 @@ function deleteDue ($tasks) {
 ~~~
 
 ...
+
+Use Case
+---
+The `JSONModel` class is a base for SQL table and view controllers providing methods to safely query relations as objects (of type `JSONMessage`) with typed properties (eventually including non-scalar). There is enough implemented in that base class to get its applications covered from iterative schema updates through CRUD, paginated search and filter.
+
+Without SQL injections.
+
+### Where Less Is More
+
+Following the example of `SQLAbstract.php`, applications of `JSONModel.php` must assumes that when anything more complex than an SQL `WHERE` expression is required to select relations then one or more SQL views should be created.
+
+Use views and avoid the time-sink of maintaining complicated ORM method chain invocations entangled with hidden SQL queries in procedural PHP code, as I avoided the time-sink of writing yet another sluggish ORM by making that assumption.
+
+Beware that having one PHP class for each table or view can be both a blessing and a curse.
+
+A blessing for the accessibility of the data model sources and for the opportunity of code reuse between classes.
+
+A curse of fossil classes, side effects and bloated dependencies.
+
