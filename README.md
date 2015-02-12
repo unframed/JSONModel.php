@@ -11,7 +11,6 @@ Requirements
 - provide a few methods to query tables and views in one base controller class
 - with good names and well named options as first or second argument
 - implement iterative schema updates (aka: database repair) 
-- use [JSONMessage.php](https://github.com/laurentszyster/JSONMessage.php) to box results and extend application classes
 - use [SQLAbstract](https://github.com/unframed/SQLAbstract.php) to query safely and execute everywhere
 - support PHP 5.3
 
@@ -26,16 +25,17 @@ Synopis
 * [Table Options](#table-options)
 * [Insert](#insert)
 * [View Options](#table-options)
+* [Create Or Replace View](#create-or-replace-view)
 * [Select And Replace](#select-and-replace)
 * [Count And Column](#count-and-column)
 * [Update](#update)
 * [Delete](#delete)
-* [Controller And Message Classes](#controller-and-message-classes)
+* [Box And Unbox](#box-and-unbox)
 * [Table Classes](#table-classes)
 * [The JSON Column](#the-json-column)
 * [View Classes](#view-classes)
-* [Create](#create)
-* [Alter](#alter)
+* [Create Table If Not Exist](#create-table)
+* [Add Columns](#add-columns)
 * [Iterative Schema Update](#iterative-schema-update)
 * [Here Be Dragons](#here-be-dragons)
 
@@ -60,7 +60,7 @@ Now let's write the simplest function returning a new `JSONModel` object to cont
 
 The constructor of `JSONModel` takes two arguments : an `SQLAbstract` instance and an array of options.
 
-For instance :
+For instance here is a model factory for the `tasks` table defined above :
 
 ~~~php
 <?php
@@ -73,8 +73,6 @@ function tasksTable (SQLAbstract $sql) {
 ~~~
 
 Note how a new `JSONModel` instance can be constructed without a definition of its columns or its selection, nor knowledge about its primary keys and column types.
-
-The name of a database table or view name may be all what an application of `JSONModel` needs to count, select, insert, replace, update or delete relations in a table. And do it by default only with the safe options supported by  `SQLAbstract`.
 
 For instance, to count all relations in the `task` table then select from it all columns and return a list of `JSONMessage` boxing the results, we can reuse the same function that selects everything from any table or view controlled by a `JSONModel` controller:
 
@@ -97,9 +95,7 @@ function selectAll(JSONModel $controller) {
 ?>
 ~~~
 
-Look, this `JSONModel` was also made for composition !
-
-More options are required however to cast types, store non-scalar properties, select row(s) by primary key(s), create a table if it does not exist or alter its columns.
+The name of a database table or view name may be all what an application of `JSONModel` needs to count, select, insert, replace, update or delete relations in a table. And do it by default only with the safe options supported by  `SQLAbstract`.
 
 ### Table Options
 
@@ -108,7 +104,7 @@ To enable other features, the `JSONModel` constructor requires more options :
 - `types` a map of column name(s) to PHP callables;
 - `primary` a list of the column(s) in the primary key;
 - `columns` a map of column names to their SQL type definition for a table, or a SELECT statement for a view;
-- `jsonColumn` the name of the column used to sore JSON or `NULL`.  
+- `jsonColumn` the name of the column used to store JSON or `NULL`.  
 
 For instance to factor a `JSONModel` for our example's `task` table we should define the primary key and the integer columns :
 
@@ -184,7 +180,25 @@ function tasksView (SQLAbstract $sql) {
 ?>
 ~~~
 
-...
+Now that we have defined this view let's create it.
+
+### Create Or Replace View
+
+There is not much to write in a `createTasksView` function, though.
+
+~~~php
+<?php
+
+function createTasksView (SQLAbstract $sql) {
+    return tasksView($sql)->create();
+}
+
+?>
+~~~
+
+Note that the SQL statement will be equivalent to `CREATE OR REPLACE VIEW`.
+
+Also note that the same `create` method will try to execute the equivalent SQL statement `CREATE TABLE IF NOT EXISTS` for a table model.
 
 ### Select and Replace
 
@@ -207,9 +221,8 @@ function rescheduleDueInOneHour (JSONModel $tasksTable, JSONModel $tasksView) {
     $dueTasks = $tasksView->select($options);
     // loop and replace each.
     foreach($dueTasks as $task) {
-        $map = $task->map;
-        $map['task_scheduled_for'] = $now + 3600;
-        $map['task_modified_at'] = $now;
+        $task['task_scheduled_for'] = $now + 3600;
+        $task['task_modified_at'] = $now;
         $tasksTable->replace($task);
     }
 }
@@ -217,9 +230,15 @@ function rescheduleDueInOneHour (JSONModel $tasksTable, JSONModel $tasksView) {
 ?>
 ~~~
 
-This demonstrate the use one `select` and many atomic `replace`, but there is a better way to update databases.
+Note the type of `$task`: it is a plain associative array.
+
+Both `insert` and `replace` functions accepts associative arrays as their first `$message` argument
+
+A `JSONModel` does not requires another class to function, boxing and unboxing is left to be defined by the extension classes, eventually.
 
 ### Count and Column
+
+The sources above demonstrate the use one `select` and many atomic `replace`, but there is a better way to update databases.
 
 We could have written the same function more efficiently, using `count`, `column` and `update` : 
 
@@ -300,11 +319,13 @@ Note that the type hint to `JSONModel`.
 
 We have been so far with the "stock" controller class, dynamically defined models and the default `JSONMessage` class.
 
-### Controller And Message Classes
+### Box And Unbox
 
-The `JSONModel` and `JSONMessage` classes can be extended.
+People love ORMs because they box associative arrays in objects.
 
-For instance, let's extend a new `TasksModel` class from `JSONModel`, one that yields instances of `Task` instead of `JSONMessage`.  
+To that effect the `JSONModel` class provides one interface `message($map, $encoded=NULL)` to eventually box associative arrays with whatever object suites all those lovable people. 
+
+Plus two methods where to unbox the object's arrays.
 
 ~~~php
 <?php
@@ -312,17 +333,27 @@ For instance, let's extend a new `TasksModel` class from `JSONModel`, one that y
 class Task extends JSONMessage {}
 
 class TasksModel extends JSONModel {
-    function message (array $map) {
+    // boxing array with Task on select and insert
+    function message (array $map, $encoded=NULL) {
         return new Task($map);
+    }
+    // unboxing arrays from Tasks on insert and replace
+    function insert (Task $task) {
+        return parent::insert($task->map);
+    }
+    function replace (Task $task) {
+        return parent::replace($task->map);
     }
 }
 
 ?>
 ~~~
 
-Practically, controller classes are the right place to define its `JSONModel` options.
+Note how unboxing the associative array was also added in the redefined `insert` and `replace` methods.
 
 ### Table Classes
+
+Practically, controller classes are also the right place to define its model's options and that's another reason people love ORMs.
 
 For instance a `TasksTable` extending `TasksModel` with a factory for itself and other static methods to define its options :
 
@@ -371,23 +402,56 @@ class TasksTable extends TasksModel {
 
 The constructor of `JSONModel` can be applied differently but this pattern enables to define a model in its controller's class (and ancestors).
 
-### The JSON Column
+Note that I added a JSON column named `task_json` in the `TasksTable` model above, to store non-scalar properties along with a cache of all typed column values.
 
-Note that I added a JSON column named `task_json` in the `TasksTable` model above, to store non-scalar properties along with a cache of all typed column values. When defined and present, the methods `insert` and `replace` will save scalar and non-scalar values in this column as a JSON string.
+But before we see how it works, let's add this new column to our legacy table.
 
-For instance, with a JSON column defined we can add a non-scalar 'document' property : 
+### Add Columns
+
+Yet another reason to love ORMs and the likes is their ability to add columns to existing tables.
+
+For instance to add this new JSON column defined by `TasksTable` but missing in its legacy table :
 
 ~~~php
 <?php
 
-$task = $tasksTable->insert(array('document' => array(
-    'root' => NULL
-)))
+function repairTasksTable ($sql) {
+    // list the models to repair
+    $models = array(
+        TasksTable::factory($sql)
+    );
+    // return TRUE if columns where added
+    return JSONModel::repair($models);
+}
+
+?>
+~~~
+
+We will see further what else `repair` can do for its applications.
+
+But adding missing columns is all it will do for tables. Changing types, renaming or removing columns from a database full of data is not a very good idea to start with: it is your application's data and semantic model.
+
+Now let's see what this new JSON column can do.
+
+### The JSON Column
+
+When a JSON column is defined and present, the methods `insert` and `replace` will save scalar and non-scalar values in this column as a JSON string.
+
+For instance, with a JSON column defined we can add a, dummy, non-scalar 'document' property, with null as 'root' element : 
+
+~~~php
+<?php
+
+$task = $tasksTable->insert(array(
+    'document' => array(
+        'root' => NULL
+    )
+));
 
 ?> 
 ~~~
 
-Will store this JSON in the `task_json` column:
+In the JSON column :
 
 ~~~json
 {}
@@ -395,7 +459,7 @@ Will store this JSON in the `task_json` column:
 
 The method `select`, `fetchById` and `fetchByIds` may use the JSON column to merge values from the selected columns with the JSON decoded array.
 
-For instance to retrieve the first task and add a `data` array to it:
+For instance to retrieve the first task and add a 'data' array to it :
 
 ~~~php
 <?php
@@ -407,13 +471,15 @@ $tasksTable->replace($task);
 ?> 
 ~~~
 
-...
+Now the 'data' array and the dummy 'document' are in the JSON column : 
 
 ~~~json
 {}
 ~~~
 
 This JSON column is required to let the method `json` return a list of JSON encoded strings that represent the (eventually consistent) state of the selected relations.
+
+For instance, to get the full three first tasks :
 
 ~~~php
 <?php
@@ -423,7 +489,7 @@ echo '['.implode(',', $tasksTable->json(array('limit' => 3)).']';
 ?> 
 ~~~
 
-And that's fast. 
+And we will get them fast, regardless of the depth or size of the JSON stored.
 
 ### View Classes
 
@@ -479,7 +545,7 @@ class TasksView extends TasksModel {
 ~~~php
 <?php
 
-function repair($sql) {
+function repair ($sql) {
     if (JSONModel::repair(array(
         TasksTable::factory($sql), 
         TasksView::factory($sql) 
