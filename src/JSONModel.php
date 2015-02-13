@@ -405,10 +405,10 @@ class JSONModel {
      *
      * @param array $map
      * @param string $jsonColumn
-     * @param array $columns
+     * @param any $columns
      * @return array
      */
-    final static function row (array $map, $jsonColumn, array $columns) {
+    final static function row (array $map, $jsonColumn, $columns) {
         if ($jsonColumn === NULL) {
             if ($columns === NULL) {
                 return $map;
@@ -466,7 +466,7 @@ class JSONModel {
      * @param bool $safe
      * @return int
      */
-    function update (array $values, array $options=NULL, $safe=TRUE) {
+    function update (array $values, $options=NULL, $safe=TRUE) {
         if ($this->isView) {
             throw $this->exception('Cannot update in a view');
         }
