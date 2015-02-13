@@ -8,10 +8,10 @@ class TasksModel extends JSONModel {
     function message (array $map, $encoded=NULL) {
         return new Task($map, $encoded);
     }
-    function insert (JSONMessage $task) {
+    function insert ($task) {
         return parent::insert($task->map);
     }
-    function replace (JSONMessage $task) {
+    function replace ($task) {
         return parent::replace($task->map);
     }
 }
@@ -53,7 +53,7 @@ class TasksTable extends TasksModel {
     }
 }
 
-class TasksView extends TasksTable {
+class TasksView extends TasksModel {
     static function columns (SQLAbstract $sql) {
         return (
             "SELECT *,"

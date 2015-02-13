@@ -327,7 +327,7 @@ class JSONModel {
      *
      * @param array $options
      * @param bool $safe
-     * @return int
+     * @return any
      */
     function select (array $options=array(), $safe=TRUE) {
         $rows = $this->sql->select($this->qualifiedName(), $options, $safe);
@@ -360,8 +360,8 @@ class JSONModel {
      *
      * If a JSON column is defined this method will update it.
      *
-     * @param JSONMessage $message
-     * @return JSONMessage
+     * @param any $message
+     * @return any
      */
     function insert ($message) {
         if ($this->isView) {
@@ -436,7 +436,7 @@ class JSONModel {
     /**
      * Replace a relation in this model's table, return the number of affected rows.
      *
-     * @param JSONMessage $message
+     * @param any $message
      * @return int
      */
     function replace ($message) {
