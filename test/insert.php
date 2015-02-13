@@ -25,7 +25,8 @@ function test_insert_free ($test, $sql, $message) {
     $saved = json_encode($task);
     $stored = $tasks->fetchById($task['task']);
     $intersect = new JSONMessage(@array_intersect_assoc($stored, $task));
-    $test->is($intersect->uniform(), (new JSONMessage($task))->uniform(), $saved);
+    $message = new JSONMessage($task);
+    $test->is($intersect->uniform(), $message->uniform(), $saved);
 }
 
 $t = new TestMore();
