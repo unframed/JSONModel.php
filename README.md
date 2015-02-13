@@ -11,19 +11,21 @@ Requirements
 - provide a few methods to query tables and views in one base controller class
 - with good names and well named options as first or second argument
 - implement iterative schema updates (aka: database repair) 
-- use [SQLAbstract](https://github.com/unframed/SQLAbstract.php) to query safely and execute everywhere
+- use [SQLAbstract](https://github.com/unframed/SQLAbstract.php) to query SQL safely everywhere
 - support PHP 5.3
 
 Credits
 ---
-To [badshark](https://github.com/badshark), [JoN1oP](https://github.com/JoN1oP) and [mrcasual](https://github.com/mrcasual) for code reviews, tests and reports.
+To [badshark](https://github.com/badshark), [JoN1oP](https://github.com/JoN1oP) and [mrcasual](https://github.com/mrcasual) for requirements, code reviews, tests and reports.
 
 Synopis
 ---
-
+* [Introduction](#introduction)
+* [Use Case](#use-cases)
 * [Construct](#construct)
 * [Table Options](#table-options)
 * [Insert](#insert)
+* [Fetch By Ids](#fetch-by-ids)
 * [View Options](#table-options)
 * [Create Or Replace View](#create-or-replace-view)
 * [Select And Replace](#select-and-replace)
@@ -39,7 +41,40 @@ Synopis
 * [Iterative Schema Update](#iterative-schema-update)
 * [Here Be Dragons](#here-be-dragons)
 
-Let's assume a task scheduler as a database application, with a single tasks table.
+### Introduction
+
+The `JSONModel` class provides what "*People Love ORMs*" for:
+
+- consistent type casting, eventually boxing arrays in objects;
+- serialization and deserialization of non-scalar types, (ie: arrays); 
+- an SQL abstraction to guard against SQL injection in user input, by default;
+- the opportunity to structure the sources of their data models in PHP classes.
+
+I left out of this class everything else ORMs usually do that sucks their developers in a time-sink and sometimes down the drain : 
+
+- an application prototype or some form of dependency injection
+- a side-effect-free method chain that fails to fully cover SQL
+- a compiler for another query language than SQL
+- an implementation of the active record pattern
+
+The `JSONModel` class is *only* a base for SQL table and view controllers providing methods to safely query relations, eventually boxed as objects, with typed properties (eventually including non-scalar), through an `SQLAbstract` implementation.
+
+There is *just* enough in `JSONModel` and its dependencies to get their applications covered from iterative schema updates through CRUD, paginated search and filter with all JSON types.
+
+With limits and without SQL injections, safely.
+
+### Use Case
+
+The use case of `JSONModel` is the development of a plugin for an existing database application, reusing its database access APIs or bypassing them (ie: running the same PHP code inside and outside a legacy application with different `SQLAbstract` implementations).
+
+The purpose of `JSONModel` is to maintain the legacy of its application and eventually erase its technical debt be it:
+
+a) common and probably unsafe inline SQL; 
+b) an uniquely incomplete API on top of PDO or mysql_* functions;
+c) yet another PHP framework, including WordPress;
+d) a funky mix of all three.
+
+So let's assume a legacy task scheduler application, with a single tasks table in its database.
 
 ~~~sql
 CREATE TABLE IF NOT EXISTS `tasks` (
@@ -54,7 +89,7 @@ CREATE TABLE IF NOT EXISTS `tasks` (
 );
 ~~~
 
-Now let's write the simplest function returning a new `JSONModel` object to control the legacy table `tasks` defined above.
+Now let's write the simplest function returning a new `JSONModel` object to control this legacy table `tasks`.
 
 ### Construct
 
@@ -74,12 +109,12 @@ function tasksTable (SQLAbstract $sql) {
 
 Note how a new `JSONModel` instance can be constructed without a definition of its columns or its selection, nor knowledge about its primary keys and column types.
 
-For instance, to count all relations in the `task` table then select from it all columns and return a list of `JSONMessage` boxing the results, we can reuse the same function that selects everything from any table or view controlled by a `JSONModel` controller:
+For instance, to count all relations in the `tasks` table then select from it all columns and return a list of rows, we can reuse the same function that selects everything from any table or view controlled by a `JSONModel`:
 
 ~~~php
 <?php
 
-function selectAll(JSONModel $controller) {
+function selectAllTasks(JSONModel $controller) {
     $count = $controller->count();
     if ($count) > 0) {
         return array(
@@ -95,7 +130,7 @@ function selectAll(JSONModel $controller) {
 ?>
 ~~~
 
-The name of a database table or view name may be all what an application of `JSONModel` needs to count, select, insert, replace, update or delete relations in a table. And do it by default only with the safe options supported by  `SQLAbstract`.
+The name of a database table or view name may be all what an application of `JSONModel` needs to: `count`, `select`, `insert`, `replace`, `update` or `delete` relations in a table. And do it by default only with the safe options supported by  `SQLAbstract`.
 
 ### Table Options
 
@@ -106,7 +141,7 @@ To enable other features, the `JSONModel` constructor requires more options :
 - `columns` a map of column names to their SQL type definition for a table, or a SELECT statement for a view;
 - `jsonColumn` the name of the column used to store JSON or `NULL`.  
 
-For instance to factor a `JSONModel` for our example's `task` table we should define the primary key and the integer columns :
+For instance to factor a `JSONModel` for our example's `tasks` table we should define the primary key and the integer columns :
 
 ~~~php
 <?php
@@ -133,15 +168,82 @@ function tasksTable (SQLAbstract $sql) {
 
 Now we can insert, replace and fetch tasks by identifier(s).
 
-With all types casted.
+With all types casted, which is probably the first loved function of ORMs.
 
 ### Insert
 
-...
+For instance to insert some test tasks using integer values :
+
+~~~php
+<?php
+
+function insertTestTasks(SQLAbstract $sql) {
+    $controller = tasksTable($sql);
+    $inserted = array();
+    $now = time();
+    foreach (array(
+        array(
+            `task_name` => 'in one hour',
+            `task_scheduled_for` => $now + 3600,
+            `task_created_at` => $now,
+            `task_modified_at` => $now
+        ),
+        array(
+            `task_name` => 'in two hours',
+            `task_scheduled_for` => $now + 7200,
+            `task_created_at` => $now,
+            `task_modified_at` => $now
+        )
+    ) as $tasks) {
+        array_push($inserted, $controller->insert($task));
+    }
+    return $inserted;
+}
+
+?>
+~~~
+
+The `insert` method returns the inserted column names and values.
+
+Note that a `task_id` column was not provided.
+
+If the model defined a single column with type 'intval' as primary key, a database identifier is assumed and the returned relation will be updated with the last inserted identifier. Also, in that case, the `insert` method fail il that identifier is set in the relation to insert.   
+
+### Fetch By Ids
+
+To fetch a task by id : 
+
+~~~php
+<?php
+
+function fetchTaskById (SQLAbstract $sql, $id) {
+    return tasksTables($sql)->fetchById($id);
+}
+
+?>
+~~~
+
+The `$id` argument may be a scalar value in case of a single primary column or a complete map of primary column names with scalar values otherwise.
+
+There is also a plural form, but it is implemented only for tables with single primary column.
+
+~~~php
+<?php
+
+function fetchTaskByIds (SQLAbstract $sql, $ids) {
+    return tasksTables($sql)->fetchByIds($ids);
+}
+
+?>
+~~~
+
+Fetching by ids is all fine, but there's so much more SQL can select.
+
+Some of that SQL power is available, safely, with limits, throught `SQLAsbtract` [query options](https://github.com/unframed/SQLAbstract.php#query-options).
+
+And if anything more complex than an SQL `WHERE` expression is required to select relations, then one or more SQL views should be created.
 
 ### View Options
-
-Following the example of `SQLAbstract.php`, applications of `JSONModel.php` must assumes that when anything more complex than an SQL `WHERE` expression is required to select relations then one or more SQL views should be created.
 
 Here, for instance, a view of tasks and various time-related states :
 
@@ -180,7 +282,9 @@ function tasksView (SQLAbstract $sql) {
 ?>
 ~~~
 
-Now that we have defined this view let's create it.
+Avoid the time-sink of maintaining complicated ORM method chain invocations entangled with hidden SQL queries in procedural PHP code. Instead, let your PHP scripts create complex SQL views that can be used simply. And safely.
+
+And now that we have defined this view let's create it.
 
 ### Create Or Replace View
 
@@ -202,12 +306,16 @@ Also note that the same `create` method will try to execute the equivalent SQL s
 
 ### Select and Replace
 
-Here is what the function rescheduling all due tasks in one hour could look like, brutally written as a `select` and a loop around `replace` : 
+Now we can count and select messages from a more complex view. 
+
+For instance to reschedule all due tasks in one hour : 
 
 ~~~php
 <?php
 
-function rescheduleDueInOneHour (JSONModel $tasksTable, JSONModel $tasksView) {
+function rescheduleDueInOneHour (SQLAbstract $sql) {
+    $tasksView = tasksView($sql);
+    $tasksTable = tasksTable($sql);
     $now = time();
     // set the selection's option
     $options = array(
@@ -219,7 +327,7 @@ function rescheduleDueInOneHour (JSONModel $tasksTable, JSONModel $tasksView) {
     $options['limit'] = $tasksView->count($options);
     // select all due tasks
     $dueTasks = $tasksView->select($options);
-    // loop and replace each.
+    // loop and replace each tasks.
     foreach($dueTasks as $task) {
         $task['task_scheduled_for'] = $now + 3600;
         $task['task_modified_at'] = $now;
@@ -230,22 +338,20 @@ function rescheduleDueInOneHour (JSONModel $tasksTable, JSONModel $tasksView) {
 ?>
 ~~~
 
-Note the type of `$task`: it is a plain associative array.
+Note that, so far in all examples, the type of `$task` is a plain associative array. The `select`, `fetchById` and `fetchByIds` method returns associative arrays. Both `insert` and `replace` functions accepts associative arrays as their first `$message` argument.
 
-Both `insert` and `replace` functions accepts associative arrays as their first `$message` argument
-
-A `JSONModel` does not requires another class to function, boxing and unboxing is left to be defined by the extension classes, eventually.
+Boxing and unboxing is left to be defined by the extension classes, eventually.
 
 ### Count and Column
 
-The sources above demonstrate the use one `select` and many atomic `replace`, but there is a better way to update databases.
-
-We could have written the same function more efficiently, using `count`, `column` and `update` : 
+The sources above demonstrate the use one `select` and many atomic `replace`, but there is a better way to update databases. We could have written the same function more efficiently, using `count`, `column` and `update` : 
 
 ~~~php
 <?php
 
-function rescheduleDueInOneHour (JSONModel $tasksView, JSONModel $tasksTable) {
+function rescheduleDueInOneHour (SQLAbstract $sql) {
+    $tasksView = tasksView($sql);
+    $tasksTable = tasksTable($sql);
     $now = time();
     // select all the identifiers of the due tasks.
     $count = $tasksView->count(array(
@@ -271,11 +377,11 @@ function rescheduleDueInOneHour (JSONModel $tasksView, JSONModel $tasksTable) {
 ?>
 ~~~
 
-This demonstration of the possible options of `count`, `column` and `update` is a very common SQL pattern, either to update or delete a previously selected sets of relations at once.
+This demonstration of the possible options of `count`, `column` and `update` is a very common SQL pattern, either to update or delete a previously selected sets of relations at once. But it will break past the limit on SQL parameters set by the database driver(s).
 
 ### Update
 
-We could use only one `update` to implement rescheduling of all due tasks in one hour :
+So we can use only one `update` to implement rescheduling of all due tasks in one hour :
 
 ~~~php
 <?php
@@ -296,7 +402,7 @@ function rescheduleDueInOneHour (JSONModel $tasksTable) {
 
 Note the `FALSE` safety flag as third argument in the call to `update`.
 
-In `JSONModel`, by default, safe options are asserted and the use `where` option requires an explicit request. 
+In `JSONModel` safe options are asserted by default and the use of a `where` option requires an explicit request.
 
 ### Delete
 
@@ -315,17 +421,19 @@ function deleteDue (JSONModel $tasksTable) {
 ?>
 ~~~
 
-Note that the type hint to `JSONModel`.
+That's it for CRUD.
 
-We have been so far with the "stock" controller class, dynamically defined models and the default `JSONMessage` class.
+Note that we have been so far with only the `JSONModel` class, dynamically defined models and associative arrays.
+
+What about extension classes, objects boxing and unboxing ? 
 
 ### Box And Unbox
 
 People love ORMs because they box associative arrays in objects.
 
-To that effect the `JSONModel` class provides one interface `message($map, $encoded=NULL)` to eventually box associative arrays with whatever object suites all those lovable people. 
+To that effect the `JSONModel` class provides one interface - `message($map, $encoded=NULL)` - to eventually box associative arrays with whatever object suites all those lovable people. 
 
-Plus two methods where to unbox the object's arrays.
+Plus two methods where to unbox the object's arrays: `insert` and `replace`.
 
 ~~~php
 <?php
@@ -349,13 +457,13 @@ class TasksModel extends JSONModel {
 ?>
 ~~~
 
-Note how unboxing the associative array was also added in the redefined `insert` and `replace` methods.
+It is a practical design pattern to define a base class for an application or module's table(s) and view(s), a place where to redefine boxing, insert and replace for all inheritors.
 
 ### Table Classes
 
-Practically, controller classes are also the right place to define its model's options and that's another reason people love ORMs.
+Practically, controller classes are also good places to define data models  and that's another reason people love ORMs.
 
-For instance a `TasksTable` extending `TasksModel` with a factory for itself and other static methods to define its options :
+For instance a `TasksTable` extending `TasksModel` with a factory for itself and other static methods to define its model's options :
 
 ~~~php
 <?php
@@ -400,8 +508,6 @@ class TasksTable extends TasksModel {
 ?>
 ~~~
 
-The constructor of `JSONModel` can be applied differently but this pattern enables to define a model in its controller's class (and ancestors).
-
 Note that I added a JSON column named `task_json` in the `TasksTable` model above, to store non-scalar properties along with a cache of all typed column values.
 
 But before we see how it works, let's add this new column to our legacy table.
@@ -427,9 +533,11 @@ function repairTasksTable ($sql) {
 ?>
 ~~~
 
-We will see further what else `repair` can do for its applications.
+We will see further what else this static `repair` method can do for its applications. 
 
-But adding missing columns is all it will do for tables. Changing types, renaming or removing columns from a database full of data is not a very good idea to start with: it is your application's data and semantic model.
+Adding missing columns is all `repair` will do for table models. 
+
+Changing types, renaming or removing columns from a database full of data is not a very good idea to start with: it is your application's data and semantic model.
 
 Now let's see what this new JSON column can do.
 
@@ -437,16 +545,22 @@ Now let's see what this new JSON column can do.
 
 When a JSON column is defined and present, the methods `insert` and `replace` will save scalar and non-scalar values in this column as a JSON string.
 
-For instance, with a JSON column defined we can add a, dummy, non-scalar 'document' property, with null as 'root' element : 
+For instance, with a JSON column defined we can add a, dummy, non-scalar 'document' property, with null as 'root' element. For instance to : 
 
 ~~~php
 <?php
 
-$task = $tasksTable->insert(array(
+$now = time();
+$task = new Task(array(
+    'task_id' => 1, 
+    'task_name' => 'in one hour', 
+    'task_created_at' => $now,
+    'task_scheduled_for' => $now + 3600,
     'document' => array(
         'root' => NULL
     )
 ));
+$tasksTable->replace($task);
 
 ?> 
 ~~~
@@ -454,48 +568,66 @@ $task = $tasksTable->insert(array(
 In the JSON column :
 
 ~~~json
-{}
+{
+    "task_name": "in one hour", 
+    "task_created_at": 1423819815,
+    "task_scheduled_for": 1423823415,
+    "document": {
+        "root": null
+    },
+    "task":1
+}
 ~~~
 
 The method `select`, `fetchById` and `fetchByIds` may use the JSON column to merge values from the selected columns with the JSON decoded array.
+
+The `update` does not update the JSON column, use `replace` instead.
 
 For instance to retrieve the first task and add a 'data' array to it :
 
 ~~~php
 <?php
 
-$task = $tasksTable->fetchById(1);
+$task = $tasksTable->fetchById(2);
 $task->map['data'] = array(1,2,3);
 $tasksTable->replace($task);
 
 ?> 
 ~~~
 
-Now the 'data' array and the dummy 'document' are in the JSON column : 
+In the JSON column : 
 
 ~~~json
-{}
+{
+    "task_name": "in two hour",
+    "task_created_at": 1423819815,
+    "task_scheduled_for": 1423827015,
+    "data": [1,2,3],
+    "task": 2
+}
 ~~~
 
 This JSON column is required to let the method `json` return a list of JSON encoded strings that represent the (eventually consistent) state of the selected relations.
 
-For instance, to get the full three first tasks :
+For instance, to get the full thirty first tasks, encoded in JSON :
 
 ~~~php
 <?php
 
-echo '['.implode(',', $tasksTable->json(array('limit' => 3)).']';
+function topTasks (SQLAbstract $sql) {
+    return '['.implode(',', tasksTable($sql)->json(array(
+        'limit' => 30
+    )).']';
+}
 
 ?> 
 ~~~
 
-And we will get them fast, regardless of the depth or size of the JSON stored.
+Fast, regardless of the depth or size of the JSON stored.
 
 ### View Classes
 
-Avoid the time-sink of maintaining complicated ORM method chain invocations entangled with hidden SQL queries in procedural PHP code. Instead, let your PHP scripts create and use complex SQL views in database.
-
-...
+Let's wrap up a `TasksView` class before we finish the synopsis :
 
 ~~~php
 <?php
@@ -536,30 +668,55 @@ class TasksView extends TasksModel {
 ?>
 ~~~
 
-...
+Again I added a `jsonColumn` previously added to `TasksTable`, let's repair.
 
 ### Iterative Schema Update
 
-...
+Having opened up the possibility for related classes in independent source files to create tables, add columns and replace views, it is imperative to provide the correct and practical solution to the issue of iterative schema update.
+
+As we have seen above, replacing views is all fine as long as all missing tables and columns have been added.
+
+Replacing views and tables is fasts enough to be done at once, but adding all columns may fail the limit one PHP script execution time in most hosting environment.
 
 ~~~php
 <?php
 
-function repair ($sql) {
-    if (JSONModel::repair(array(
+function repairTasksModels ($sql) {
+    $models = array(
         TasksTable::factory($sql), 
         TasksView::factory($sql) 
-        ))) {
-        echo 'iterate';
-    } else {
-        echo 'repaired'
-    }
+    );
+    return JSONModel::repair($sql, $models);
 }
 
 ?>
 ~~~
 
-...
+That's the function to run everytime the data models defined in `TasksTable` and `TasksView` may have changed. If a column is add the function will ask its caller to iterate. 
+
+Also intermediary views don't have models and must be replace first.
+
+So there is a third optional argument to `repair($sql,$model,$views)`, a simple list of SQL statements and we may have as well:
+
+~~~php
+<?php
+
+function repairTasksModelsAndViews ($sql) {
+    $models = array(
+        TasksTable::factory($sql)
+    );
+    $views = array(
+        'task_view' => TasksView::columns($sql)
+    );
+    return JSONModel::repair($sql, $models, $views);
+}
+
+?>
+~~~
+
+Voila, the last feature completing `JSONModel` requirements.
+
+The ability to "migrate" that people love in ORMs.
 
 ### Here Be Dragons
 
@@ -568,26 +725,4 @@ Beware that having one PHP class for each table or view can be both a blessing a
 A blessing for the accessibility of the data model sources and for the opportunity of code reuse between classes.
 
 A curse of fossil classes, side effects and bloated dependencies.
-
-Notes
----
-The `JSONModel` class provides what "*People Love ORMs*" for:
-
-- consistent type casting;
-- serialization and deserialization of non-scalar types, (ie: arrays); 
-- an SQL abstraction to guard against SQL injection in user input, by default;
-- the opportunity to structure the sources of their data models in PHP classes.
-
-I left out of this class everything else ORMs usually do that sucks their developers in a time-sink and sometimes down the drain : 
-
-- an application prototype or some form of dependency injection
-- a side-effect-free method chain that fails to fully cover SQL
-- a compiler for another query language than SQL
-- an implementation of the active record pattern
-
-The `JSONModel` class is *only* a base for SQL table and view controllers providing methods to safely query relations as objects (of type `JSONMessage`) with typed properties (eventually including non-scalar), through `SQLAbstract`.
-
-There is enough implemented in that base class and its dependencies to get their applications covered from iterative schema updates through CRUD, paginated search and filter.
-
-Without SQL injections.
 
