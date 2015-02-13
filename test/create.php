@@ -4,7 +4,7 @@ require_once('test/TasksOO.php');
 
 function test_create ($sql) {
     $app = new Application($sql);
-    $app->tasks()->create();
+    $app->tasksTable()->create();
     $app->tasksView()->create();
 }
 

@@ -4,7 +4,7 @@ require_once('test/TasksOO.php');
 
 function test_update ($test, $sql, $map) {
     $app = new Application($sql);
-    $tasks = $app->tasks();
+    $tasks = $app->tasksTable();
     $tasks->update($map);
     $stored = $tasks->fetchById($map['task']);
     $intersect = new JSONMessage(

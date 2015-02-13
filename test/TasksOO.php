@@ -4,7 +4,19 @@ require_once('test/JSONModelTest.php');
 
 class Task extends JSONMessage {}
 
-class Tasks extends JSONModel {
+class TasksModel extends JSONModel {
+    function message (array $map, $encoded=NULL) {
+        return new Task($map, $encoded);
+    }
+    function insert (JSONMessage $task) {
+        return parent::insert($task->map);
+    }
+    function replace (JSONMessage $task) {
+        return parent::replace($task->map);
+    }
+}
+
+class TasksTable extends TasksModel {
     static function columns () {
         return array(
             'task' => 'INTEGER NOT NULL AUTO_INCREMENT',
@@ -15,7 +27,7 @@ class Tasks extends JSONModel {
             'task_modified_at' => 'INTEGER UNSIGNED',
             'task_deleted_at' => 'INTEGER UNSIGNED',
             'task_json' => 'MEDIUMTEXT'
-            );
+        );
     }
     static function types () {
         return array(
@@ -25,26 +37,24 @@ class Tasks extends JSONModel {
             'task_created_at' => 'intval',
             'task_modified_at' => 'intval',
             'task_deleted_at' => 'intval'
-            );
+        );
     }
     static function primary () {
         return array('task');
     }
-    function message($map, $encoded=NULL) {
-        return new Task($map, $encoded);
-    }
-    function __construct ($sql, $types) {
-        parent::__construct($sql, $types, array(
+    static function factory (SQLAbstract $sql) {
+        return new TasksTable($sql, array(
             'name' => 'task',
-            'columns' => self::columns(),
-            'domain' => 'test_',
-            'primary' => self::primary()
-            ));
+            'columns' => TasksTable::columns(),
+            'primary' => TasksTable::primary(),
+            'types' => TasksTable::types(),
+            'domain' => 'test_'
+        ));
     }
 }
 
-class TasksView extends JSONModel {
-    static function columns ($sql) {
+class TasksView extends TasksTable {
+    static function columns (SQLAbstract $sql) {
         return (
             "SELECT *,"
             ." (task_scheduled_for > NOW())"
@@ -54,46 +64,41 @@ class TasksView extends JSONModel {
             ." (task_deleted_at IS NOT NULL)"
             ." AS task_deleted"
             ." FROM ".$sql->prefixedIdentifier('test_task')
-            );
+        );
     }
-    static function types() {
+    static function types () {
         return array(
             'task_due' => 'boolval',
             'task_completed' => 'boolval',
             'task_deleted' => 'boolval'
-            );
+        );
     }
-    function message($map, $encoded=NULL) {
-        return new Task($map, $encoded);
-    }
-    function __construct ($sql, $types) {
-        parent::__construct($sql, $types, array(
+    static function factory (SQLAbstract $sql) {
+        return new TasksView($sql, array(
             'name' => 'task_view',
-            'columns' => self::columns($sql),
-            'primary' => Tasks::primary(),
+            'columns' => TasksView::columns($sql),
+            'primary' => TasksTable::primary(),
+            'types' => array_merge(TasksTable::types(), TasksView::types()),
             'domain' => 'test_'
-            ));
+        ));
     }
 }
 
 class Application extends JSONModelTest {
-    function __construct($sql) {
+    function __construct(SQLAbstract $sql) {
         parent::__construct(
             $sql,
-            array(
-                'task' => Tasks::columns()
-            ), array(
-                'task_view' => TasksView::columns($sql)
-            ), array_merge(
-                Tasks::types(),
-                TasksView::types()
-            )
+            array('task' => TasksTable::columns()),
+            array('task_view' => TasksView::columns($sql)),
+            TasksView::types()
         );
     }
-    function tasks () {
-        return new Tasks($this->sql, $this->types);
+    function tasksTable () {
+        return TasksTable::factory($this->sql);
     }
     function tasksView () {
-        return new TasksView($this->sql, $this->types);
+        return TasksView::factory($this->sql);
     }
 }
+
+// 0483 666 608

@@ -96,9 +96,8 @@ class JSONModel {
     /**
      *
      */
-    function __construct($sql, $types, $options) {
+    function __construct(SQLAbstract $sql, array $options) {
         $this->sql = $sql;
-        $this->types = $types;
         $m = new JSONMessage($options);
         $this->name = $m->getString('name');
         $this->columns = $m->getDefault('columns', NULL);
@@ -115,6 +114,7 @@ class JSONModel {
         } else {
             $this->jsonColumn = NULL;
         }
+        $this->types = $m->getMap('types', array());
     }
     /**
      * Return a new exception to be throwed by the model's methods.
@@ -127,14 +127,14 @@ class JSONModel {
         return new Exception($message, $previous);
     }
     /**
-     * Return a new JSONMessage to be used by the model's methods.
+     * Eventually box new message, return the associative array by default.
      *
      * @param array $map
      * @param string $encoded
      * @return JSONMessage
      */
-    function message ($map, $encoded=NULL) {
-        return new JSONMessage($map, $encoded);
+    function message (array $map, $encoded=NULL) {
+        return $map;
     }
     /**
      * Return the qualified name of this model (ie: its unprefixed table name)
@@ -159,7 +159,7 @@ class JSONModel {
                 ));
         }
     }
-    final function column ($options=array(), $safe=TRUE) {
+    final function column (array $options=array(), $safe=TRUE) {
         if (!array_key_exists('columns', $options)) {
             $options['columns'] = array($this->primary);
         }
@@ -170,7 +170,7 @@ class JSONModel {
         }
         return $results;
     }
-    final function ids ($options=array(), $safe=TRUE) {
+    final function ids (array $options=array(), $safe=TRUE) {
         $options['columns'] = $this->primary;
         if (count($this->primary) === 1) {
             return $this->column($options, $safe);
@@ -182,7 +182,7 @@ class JSONModel {
                 );
         }
     }
-    final function json ($options=array(), $safe=TRUE) {
+    final function json (array $options=array(), $safe=TRUE) {
         $options['columns'] = array($this->jsonColumn);
         return $this->column($options, $safe);
     }
@@ -190,9 +190,10 @@ class JSONModel {
      * Cast a row into a map using the types defined for this model.
      *
      * @param array $row
-     * @return JSONMessage
+     * @param array $map
+     * @return array
      */
-    final function cast ($row, $map) {
+    final function cast (array $row, array $map) {
         foreach ($row as $column => $value) {
             if ($column != $this->jsonColumn) {
                 if (array_key_exists($column, $this->types) && $value !== NULL) {
@@ -213,11 +214,13 @@ class JSONModel {
      * @param array $row
      * @return JSONMessage
      */
-    final function map ($row) {
+    final function map (array $row) {
         if ($this->jsonColumn !== NULL && array_key_exists($this->jsonColumn, $row)) {
             $encoded = $row[$this->jsonColumn];
             $map = json_decode($encoded, TRUE);
-            return $this->message($this->cast($row, $map), $encoded);
+            return $this->message($this->cast(
+                $row, ($map === NULL ? array(): $map)
+            ), $encoded);
         } else {
             return $this->message($this->cast($row, array()));
         }
@@ -243,7 +246,17 @@ class JSONModel {
             )));
     }
     /**
+     * Fetch and return a relation by its primary key(s).
      *
+     * Accepts as `$id` argument a scalar value for model with a single
+     * primary key and a map of columns and values for other models.
+     *
+     * Throws an exception if no `primary` option was defined or if an incomplete
+     * or NULL primary key was passed as argument.
+     *
+     * @param any $id
+     * @return any
+     * @throws Exception
      */
     final function fetchById ($id) {
         if (count($this->primary) === 1) {
@@ -265,7 +278,9 @@ class JSONModel {
             $filter = array_intersect_key($id, $this->primaryKeys());
             if (count($filter) !== count($this->primary)) {
                 throw $this->exception(
-                    "The \$id must be a array for model ".$this->name
+                    "Missing primary keys ".json_encode(
+                        array_keys(array_diff_key($id, $this->primaryKeys()))
+                        )." to fetchById from ".$this->name
                     );
             }
             return $this->map($this->sql->select(
@@ -278,9 +293,19 @@ class JSONModel {
         }
     }
     /**
+     * Fetch and return relations by identifiers.
      *
+     * Accepts as `$ids` argument a list of scalar value for model with a single
+     * primary key.
+     *
+     * Throws an exception if no `primary` option was defined or if an incomplete
+     * or NULL primary key was passed as argument.
+     *
+     * @param any $id
+     * @return any
+     * @throws Exception
      */
-    final function fetchByIds ($ids) {
+    final function fetchByIds (array $ids) {
         if (count($this->primary) === 1) {
             $rows = $this->sql->getRowsByIds(
                 $this->qualifiedName(), $this->primary[0], $ids
@@ -304,7 +329,7 @@ class JSONModel {
      * @param bool $safe
      * @return int
      */
-    function select ($options=array(), $safe=TRUE) {
+    function select (array $options=array(), $safe=TRUE) {
         $rows = $this->sql->select($this->qualifiedName(), $options, $safe);
         return array_map(array($this, 'map'), $rows);
     }
@@ -315,7 +340,7 @@ class JSONModel {
      * @param bool $safe
      * @return int
      */
-    function count ($options=array(), $safe=TRUE) {
+    function count (array $options=array(), $safe=TRUE) {
         return $this->sql->count($this->qualifiedName(), $options, $safe);
     }
     private static function _filterScalarAndNull ($map) {
@@ -328,26 +353,33 @@ class JSONModel {
         return $values;
     }
     /**
-     * Insert a message's into this model's table, return the inserted ID and
-     * maybe update the JSON column if it is defined.
+     * Insert a relation in this model's table.
+     *
+     * If a single integer primary key is defined, this method will assume
+     * a database identifier.
+     *
+     * If a JSON column is defined this method will update it.
      *
      * @param JSONMessage $message
-     * @return integer
+     * @return JSONMessage
      */
     function insert ($message) {
         if ($this->isView) {
             throw $this->exception('Cannot insert in a view');
         }
         // check that the new message does not have a primary key set.
-        if (count($this->primary) === 1 && $message->has($this->primary[0])) {
+        if (
+            count($this->primary) === 1
+            && array_key_exists($this->primary[0], $message)
+            ) {
             throw $this->exception('Cannot insert with an identifier set');
         }
         // insert existing columns and save the inserted id, eventually typed
         $table = $this->qualifiedName();
         if ($this->columns === NULL) {
-            $map = self::_filterScalarAndNull($message->map);
+            $map = self::_filterScalarAndNull($message);
         } else {
-            $map = array_intersect_key($message->map, $this->columns);
+            $map = array_intersect_key($message, $this->columns);
         }
         $id = $this->sql->insert($table, $map);
         if (count($this->primary) === 1) {
@@ -356,16 +388,16 @@ class JSONModel {
                 $id = call_user_func_array($this->types[$idColumn], array($id));
             }
             // update the message's map
-            $message->map[$idColumn] = $id;
+            $message[$idColumn] = $id;
             if ($this->jsonColumn !== NULL) {
                 // eventually update the *_json column in the database
                 $this->sql->update($table, array(
-                    $this->jsonColumn => json_encode($message->map)
+                    $this->jsonColumn => json_encode($message)
                     ), array('filter' => array($idColumn => $id)));
             }
         }
-        // return the updated message
-        return $message;
+        // return the updated message, eventually boxed
+        return $this->message($message);
     }
     /**
      * Map a message's map into a row, eventually encoding a JSON column if it
@@ -376,7 +408,7 @@ class JSONModel {
      * @param array $columns
      * @return array
      */
-    final static function row ($map, $jsonColumn, $columns) {
+    final static function row (array $map, $jsonColumn, array $columns) {
         if ($jsonColumn === NULL) {
             if ($columns === NULL) {
                 return $map;
@@ -402,7 +434,7 @@ class JSONModel {
         return $row;
     }
     /**
-     * Replace a message's into this model's table, return the number of affected rows.
+     * Replace a relation in this model's table, return the number of affected rows.
      *
      * @param JSONMessage $message
      * @return int
@@ -412,7 +444,7 @@ class JSONModel {
             throw $this->exception('Cannot replace in a view');
         }
         // check that an identifier is set
-        if (!$this->assertPrimary($message->map)) {
+        if (!$this->assertPrimary($message)) {
             throw $this->exception(
                 'Cannot replace without a primary key(s) set'
                 );
@@ -420,7 +452,7 @@ class JSONModel {
         // replace the whole message's map, maybe serialize in the *_json column
         return $this->sql->replace(
             $this->qualifiedName(), self::row(
-                $message->map, $this->jsonColumn, $this->columns
+                $message, $this->jsonColumn, $this->columns
                 )
             );
     }
@@ -434,7 +466,7 @@ class JSONModel {
      * @param bool $safe
      * @return int
      */
-    function update ($values, $options=NULL, $safe=TRUE) {
+    function update (array $values, array $options=NULL, $safe=TRUE) {
         if ($this->isView) {
             throw $this->exception('Cannot update in a view');
         }
@@ -466,7 +498,7 @@ class JSONModel {
      * @param bool $safe
      * @return int
      */
-    function delete ($options, $safe=TRUE) {
+    function delete (array $options, $safe=TRUE) {
         if ($this->isView) {
             throw $this->exception('Cannot delete from view');
         }

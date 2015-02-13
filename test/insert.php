@@ -4,7 +4,7 @@ require_once('test/TasksOO.php');
 
 function test_insert ($test, $sql, $message) {
     $app = new Application($sql);
-    $tasks = $app->tasks();
+    $tasks = $app->tasksTable();
     $task = $tasks->insert($message);
     $saved = json_encode($task->map);
     $stored = $tasks->fetchById($task->getInt('task'));
@@ -13,18 +13,19 @@ function test_insert ($test, $sql, $message) {
 }
 
 function test_insert_free ($test, $sql, $message) {
-    $tasks = new JSONModel($sql, Tasks::types(), array(
+    $tasks = new JSONModel($sql, array(
         'domain' => 'test_',
         'name' => 'task',
         'columns' => NULL,
         'primary' => array('task'),
-        'jsonColumn' => 'task_json'
+        'jsonColumn' => 'task_json',
+        'types' => TasksTable::types()
     ));
     $task = $tasks->insert($message);
-    $saved = json_encode($task->map);
-    $stored = $tasks->fetchById($task->getInt('task'));
-    $intersect = new JSONMessage(@array_intersect_assoc($stored->map, $task->map));
-    $test->is($intersect->uniform(), $task->uniform(), $saved);
+    $saved = json_encode($task);
+    $stored = $tasks->fetchById($task['task']);
+    $intersect = new JSONMessage(@array_intersect_assoc($stored, $task));
+    $test->is($intersect->uniform(), (new JSONMessage($task))->uniform(), $saved);
 }
 
 $t = new TestMore();
@@ -57,12 +58,12 @@ test_insert($t, $sql, new JSONMessage(array(
     'task_scheduled_for' => time()+3600
     )));
 
-test_insert_free($t, $sql, new JSONMessage(array(
+test_insert_free($t, $sql, array(
     'task_name' => 'in two hour',
     'task_created_at' => time(),
     'task_scheduled_for' => time()+7200,
     'extensions' => array(
         'list' => array('A', 'B', 'C')
         )
-    )));
+    ));
 
