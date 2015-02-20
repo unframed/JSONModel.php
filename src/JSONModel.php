@@ -260,10 +260,15 @@ class JSONModel {
      */
     final function fetchById ($id) {
         if (count($this->primary) === 1) {
+            // check presence of id
             $this->assertIdNotScalarOrNull($id);
-            return $this->map($this->sql->getRowById(
-                $this->qualifiedName(), $this->primary[0], $id
-                ));
+
+            // attempt to fetch row by id
+            $row = $this->sql->getRowById($this->qualifiedName(), $this->primary[0], $id);
+
+            // returns the mapped row or false if not found
+            return ($row !== false) ? $this->map($row) : $row;
+
         } elseif (count($this->primary) > 1) {
             if (!JSONMessage::is_map($id)) {
                 throw $this->exception(
