@@ -7,25 +7,40 @@ class JSONModel {
 
     // how JSONModel database tables and views get created and upgraded, iteratively.
 
-    final static function repairSchemaIter ($sql, $primary, $tables, $views, $domain) {
+    final static function repairSchemaIter (
+        $sql, $primary, $tables, $views, $domain, $iter=TRUE
+    ) {
+        $createdTableNames = array();
         $exist = $sql->showTables($domain);
         foreach ($tables as $table => $columns) {
-            if (in_array($sql->prefix($table), $exist)) {
+            $prefixedName = $sql->prefix($table);
+            if (in_array($prefixedName, $exist)) {
                 $newColumns = array_diff_key($columns, $sql->showColumns($table));
                 if (count($newColumns) > 0) {
                     $sql->execute($sql->alterTableStatement($table, $newColumns));
-                    return TRUE;
+                    if ($iter === TRUE) {
+                        return array(
+                            'complete' => FALSE,
+                            'added' => array_keys($newColumns),
+                            'created' => $createdTableNames
+                        );
+                    }
                 }
             } else {
                 $sql->execute($sql->createTableStatement(
-                    $domain.$table, $columns, $primary[$table]
+                    $table, $columns, $primary[$table]
                 ));
+                array_push($createdTableNames, $table);
             }
         }
         foreach ($views as $view => $select) {
-            $sql->execute($sql->createViewStatement($domain.$view, $select));
+            $sql->execute($sql->createViewStatement($view, $select));
         }
-        return FALSE;
+        return array(
+            'complete' => TRUE,
+            'added' => array(),
+            'created' => $createdTableNames
+        );
     }
 
     // infer a schema of primary keys, tables and views from a list JSONModel
@@ -50,7 +65,7 @@ class JSONModel {
 
     final static function repair ($sql, $models, $views=array(), $domain='') {
         list($primary, $tables, $views) = self::schema($models, $views);
-        return repairSchemaIter($sql, $primary, $tables, $views, $domain);
+        return self::repairSchemaIter($sql, $primary, $tables, $views, $domain, FALSE);
     }
 
     /**
@@ -94,6 +109,10 @@ class JSONModel {
      */
     protected $isView;
     /**
+     * @var array indexes
+     */
+    protected $indexes;
+    /**
      *
      */
     function __construct(SQLAbstract $sql, array $options) {
@@ -102,6 +121,7 @@ class JSONModel {
         $this->name = $m->getString('name');
         $this->columns = $m->getDefault('columns', NULL);
         $this->primary = $m->getList('primary', array($this->name));
+        $this->indexes = $m->getList('indexes', array());
         $this->domain = $m->getString('domain', '');
         $this->isView = (is_string($this->columns));
         if ($m->has('jsonColumn')) {
