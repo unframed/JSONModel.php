@@ -186,7 +186,7 @@ class JSONModel {
         $results = $this->sql->column($this->qualifiedName(), $options, $safe);
         $column = $options['columns'][0];
         if (array_key_exists($column, $this->types)) {
-            return array_map($types[$column], $results);
+            return array_map($this->types[$column], $results);
         }
         return $results;
     }
