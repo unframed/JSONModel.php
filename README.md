@@ -714,9 +714,51 @@ function repairTasksModelsAndViews ($sql) {
 ?>
 ~~~
 
-Voila, the last feature completing `JSONModel` requirements.
+Ability to "migrate" databases, checked.
 
-The ability to "migrate" that people love in ORMs.
+### Relate
+
+Last but not least, the `replace` method provides fetch selected sets of related data at once.
+
+...
+
+~~~php
+<?php
+
+class TasksTags extends JSONModel {
+    static function factory ($sql) {
+        return array(
+            'tag_task' => 'INTEGER NOT NULL',
+            'tag_label' => 'VARCHAR(255) NOT NULL'
+        );
+    }
+    static function primary () {
+        return array('tag_task', 'tag_label');
+    }
+}
+
+?>
+~~~
+
+All the select options can passed to `replace`, plus an map of column names to related JSON models :  
+
+~~~php
+<?php
+
+function relateTasksWithTags (SQLAbsract $sql, array $options) {
+    $tasks = Tasks::factory($sql);
+    $tags = TasksTags::factory($sql);
+    return $tasks->relate($options, array(
+        'task_labels' => $tags
+    ));
+}
+
+?>
+~~~
+
+...
+
+This `relate` method completes the requirements for `JSONModel`.
 
 ### Here Be Dragons
 
