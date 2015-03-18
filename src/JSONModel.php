@@ -1,4 +1,10 @@
 <?php
+/**
+ * @version 0.8
+ * @todo more test and documentation
+ * @copyright Laurent Szyster 2014 - 2015
+ * @author laurentszyster@gmail.com
+ */
 
 /**
  * A model controller.
