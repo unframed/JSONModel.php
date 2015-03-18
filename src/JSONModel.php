@@ -367,7 +367,7 @@ class JSONModel {
 
     function index (array $options=array(), $safe=TRUE) {
         $index = array();
-        $rows = $this->select($options, $save);
+        $rows = $this->select($options, $safe);
         if (count($rows) > 0) {
             JSONModel::indexRows($rows, $this->primary[0], $index);
         }
@@ -400,7 +400,7 @@ class JSONModel {
         $keys = array_keys($index);
         $count = count($keys);
         foreach($models as $column => $model) {
-            $primary = $model->primary();
+            $primary = $model->primary;
             $keyColumn = $primary[0];
             $rows = $model->select(array(
                 'filter' => array(

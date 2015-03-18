@@ -5,7 +5,9 @@ DEPS = deps \
 	deps/SQLAbstract.php \
 	deps/WordPress
 
-test: pull
+test: pull test_php
+
+test_php:
 	./press up wp
 	php test/create.php
 	php test/insert.php
