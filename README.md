@@ -16,7 +16,8 @@ Requirements
 
 Credits
 ---
-To [badshark](https://github.com/badshark), [JoN1oP](https://github.com/JoN1oP) and [mrcasual](https://github.com/mrcasual) for requirements, code reviews, tests and reports.
+- [laurentszyster](https://github.com/laurentszyster)
+- [badshark](https://github.com/badshark), [JoN1oP](https://github.com/JoN1oP) and [mrcasual](https://github.com/mrcasual) for requirements, code reviews, tests and reports.
 
 Synopis
 ---
@@ -67,12 +68,8 @@ With limits and without SQL injections, safely.
 
 The use case of `JSONModel` is the development of a plugin for an existing database application, reusing its database access APIs or bypassing them (ie: running the same PHP code inside and outside a legacy application with different `SQLAbstract` implementations).
 
-The purpose of `JSONModel` is to maintain the legacy of its application and eventually erase its technical debt be it:
-
-a) common and probably unsafe inline SQL; 
-b) an uniquely incomplete API on top of PDO or mysql_* functions;
-c) yet another PHP framework, including WordPress;
-d) a funky mix of all three.
+The purpose of `JSONModel` is to maintain the legacy of its application and eventually erase its technical debt be it:  a) common and probably unsafe inline SQL; b) an uniquely incomplete API on top of PDO or mysql_* functions;
+c) yet another PHP framework, including WordPress; d) a funky mix of all three.
 
 So let's assume a legacy task scheduler application, with a single tasks table in its database.
 
@@ -471,7 +468,7 @@ For instance a `TasksTable` extending `TasksModel` with a factory for itself and
 class TasksTable extends TasksModel {
     static function columns (SQLAbstract $sql) {
         return array(
-            'task_id' => 'INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY',
+            'task_id' => 'INTEGER NOT NULL AUTO_INCREMENT',
             'task_name' => 'VARCHAR(255) NOT NULL',
             'task_scheduled_for' => 'INTEGER UNSIGNED NOT NULL',
             'task_completed_at' => 'INTEGER UNSIGNED',
@@ -609,7 +606,7 @@ In the JSON column :
 
 This JSON column is required to let the method `json` return a list of JSON encoded strings that represent the (eventually consistent) state of the selected relations.
 
-For instance, to get the full thirty first tasks, encoded in JSON :
+For instance, to get a list of the thirty first tasks, encoded in JSON :
 
 ~~~php
 <?php
@@ -623,11 +620,11 @@ function topTasks (SQLAbstract $sql) {
 ?> 
 ~~~
 
-Fast, regardless of the depth or size of the JSON stored.
+Note that the depth and size of the JSON objects will not affect the speed of this function.
 
 ### View Classes
 
-Let's wrap up a `TasksView` class before we finish the synopsis :
+Let's wrap up a `TasksView` class before we finish :
 
 ~~~php
 <?php
@@ -668,7 +665,7 @@ class TasksView extends TasksModel {
 ?>
 ~~~
 
-Again I added a `jsonColumn` previously added to `TasksTable`, let's repair.
+Again I added a `jsonColumn` previously added to `TasksTable`, so let's repair.
 
 ### Iterative Schema Update
 
