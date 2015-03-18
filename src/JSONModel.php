@@ -192,7 +192,7 @@ class JSONModel {
         $results = $this->sql->column($this->qualifiedName(), $options, $safe);
         $column = $options['columns'][0];
         if (array_key_exists($column, $this->types)) {
-            return array_map($types[$column], $results);
+            return array_map($this->types[$column], $results);
         }
         return $results;
     }
@@ -364,6 +364,73 @@ class JSONModel {
         $rows = $this->sql->select($this->qualifiedName(), $options, $safe);
         return array_map(array($this, 'map'), $rows);
     }
+
+    static function indexRows ($rows, $column, &$index) {
+        foreach ($rows as $row) {
+            $index[strval($row[$column])] = $row;
+        }
+    }
+
+    function index (array $options=array(), $safe=TRUE) {
+        $index = array();
+        $rows = $this->select($options, $save);
+        if (count($rows) > 0) {
+            JSONModel::indexRows($rows, $this->primary[0], $index);
+        }
+        return $index;
+    }
+
+    static function relateRows ($rows, $column, $keyColumn, $valueColumn, &$index) {
+        if ($valueColumn === NULL) { // index the whole row
+            foreach ($rows as $row) {
+                $key = strval($row[$keyColumn]);
+                if (array_key_exists($key, $index)) {
+                    $index[$key][$column][] = $row;
+                } else {
+                    $index[$key][$column] = array($row);
+                }
+            }
+        } else {
+            foreach ($rows as $row) { // index one column only
+                $key = strval($row[$keyColumn]);
+                if (array_key_exists($key, $index)) {
+                    $index[$key][$column][] = $row[$valueColumn];
+                } else {
+                    $index[$key][$column] = array($row[$valueColumn]);
+                }
+            }
+        }
+    }
+
+    static function relateModels (SQLAbstract $sql, array &$index, array $models) {
+        $keys = array_keys($index);
+        $count = count($keys);
+        foreach($models as $column => $model) {
+            $primary = $model->primary();
+            $keyColumn = $primary[0];
+            $rows = $model->select(array(
+                'filter' => array(
+                    $keyColumn => $keys
+                ),
+                'limit' => 0
+            ), FALSE);
+            if (count($rows) > 0) {
+                $valueColumn = (
+                    count($rows[0]) === 2 && count($primary === 2)
+                ) ? $primary[1] : NULL;
+                JSONModel::relateRows($rows, $column, $keyColumn, $valueColumn, $index);
+            }
+        }
+    }
+
+    function relate (array $options, array $models, $safe=TRUE) {
+        $index = $this->index($options, $safe);
+        if (count($index) > 0) {
+            JSONModel::relateModels($this->sql, $index, $models);
+        }
+        return $index;
+    }
+
     /**
      * Return the count of rows in the table or in a set selected by $options.
      *
