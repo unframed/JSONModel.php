@@ -71,7 +71,7 @@ The use case of `JSONModel` is the development of a plugin for an existing datab
 The purpose of `JSONModel` is to maintain the legacy of its application and eventually erase its technical debt be it:  a) common and probably unsafe inline SQL; b) an uniquely incomplete API on top of PDO or mysql_* functions;
 c) yet another PHP framework, including WordPress; d) a funky mix of all three.
 
-So let's assume a legacy task scheduler application, with a single tasks table in its database.
+So let's assume a simplistic task scheduler application, with a tasks table and a related tags table in its database.
 
 ~~~sql
 CREATE TABLE IF NOT EXISTS `tasks` (
@@ -83,6 +83,12 @@ CREATE TABLE IF NOT EXISTS `tasks` (
     `task_modified_at` INTEGER UNSIGNED NOT NULL,
     `task_deleted_at` INTEGER UNSIGNED,
     `task_description` MEDIUMTEXT
+);
+
+CREATE TABLE IF NOT EXISTS `tags` (
+    `tag_task` INTEGER AUTOINCREMENT,
+    `tag_label` VARCHAR(255) NOT NULL,
+    PRIMARY KEY (`tag_task`, `tag_label`)
 );
 ~~~
 
@@ -418,6 +424,40 @@ function deleteDue (JSONModel $tasksTable) {
 ?>
 ~~~
 
+So far we've been playing with a single table. 
+
+What about relations ?
+
+### Relate
+
+Use `relate` to fetch selected sets of related data at once.
+
+For instance to relate the rows in tables `task` and `tags` :
+
+~~~php
+<?php
+
+function tagsTable (SQLAbstract $sql) {
+    return new JSONModel($sql, array(
+        'name' => 'tags',
+        'primary' => array(
+            'tag_task', 'tag_label'
+        ),
+        'types' => array(
+            'tag_task' => 'intval'
+        )
+    ));
+}
+
+function relateTasksWithTags (SQLAbstract $sql, array $options) {
+    return tasksTable($sql)->relate($options, array(
+        'task_tags' => tagsTable($sql)
+    ));
+}
+
+?>
+~~~
+
 That's it for CRUD.
 
 Note that we have been so far with only the `JSONModel` class, dynamically defined models and associative arrays.
@@ -713,49 +753,7 @@ function repairTasksModelsAndViews ($sql) {
 
 Ability to "migrate" databases, checked.
 
-### Relate
-
-Last but not least, the `replace` method provides fetch selected sets of related data at once.
-
-...
-
-~~~php
-<?php
-
-class TasksTags extends JSONModel {
-    static function factory ($sql) {
-        return array(
-            'tag_task' => 'INTEGER NOT NULL',
-            'tag_label' => 'VARCHAR(255) NOT NULL'
-        );
-    }
-    static function primary () {
-        return array('tag_task', 'tag_label');
-    }
-}
-
-?>
-~~~
-
-All the select options can passed to `replace`, plus an map of column names to related JSON models :  
-
-~~~php
-<?php
-
-function relateTasksWithTags (SQLAbsract $sql, array $options) {
-    $tasks = Tasks::factory($sql);
-    $tags = TasksTags::factory($sql);
-    return $tasks->relate($options, array(
-        'task_labels' => $tags
-    ));
-}
-
-?>
-~~~
-
-...
-
-This `relate` method completes the requirements for `JSONModel`.
+This `repai` method completes the requirements for `JSONModel`.
 
 ### Here Be Dragons
 
