@@ -10,76 +10,12 @@
  * A model controller.
  */
 class JSONModel {
-
-    // how JSONModel database tables and views get created and upgraded, iteratively.
-
-    final static function repairSchemaIter (
-        $sql, $primary, $tables, $views, $domain, $iter=TRUE
-    ) {
-        $createdTableNames = array();
-        $exist = $sql->showTables($domain);
-        foreach ($tables as $table => $columns) {
-            $prefixedName = $sql->prefix($table);
-            if (in_array($prefixedName, $exist)) {
-                $newColumns = array_diff_key($columns, $sql->showColumns($table));
-                if (count($newColumns) > 0) {
-                    $sql->execute($sql->alterTableStatement($table, $newColumns));
-                    if ($iter === TRUE) {
-                        return array(
-                            'complete' => FALSE,
-                            'added' => array_keys($newColumns),
-                            'created' => $createdTableNames
-                        );
-                    }
-                }
-            } else {
-                $sql->execute($sql->createTableStatement(
-                    $table, $columns, $primary[$table]
-                ));
-                array_push($createdTableNames, $table);
-            }
-        }
-        foreach ($views as $view => $select) {
-            $sql->execute($sql->createViewStatement($view, $select));
-        }
-        return array(
-            'complete' => TRUE,
-            'added' => array(),
-            'created' => $createdTableNames
-        );
-    }
-
-    // infer a schema of primary keys, tables and views from a list JSONModel
-    // (... and preliminary SQL views ,-)
-
-    final static function schema ($models, $views) {
-        $primary = array();
-        $tables = array();
-        foreach($models as $controller) {
-            $name = $controller->qualifiedName();
-            if ($controller->isView) {
-                $views[$name] = $controller->columns;
-            } else {
-                $primary[$name] = $controller->primary;
-                $tables[$name] = $controller->columns;
-            }
-        }
-        return array($primary, $tables, $views);
-    }
-
-    // create or repair the database for a set of models, iteratively.
-
-    final static function repair ($sql, $models, $views=array(), $domain='') {
-        list($primary, $tables, $views) = self::schema($models, $views);
-        return self::repairSchemaIter($sql, $primary, $tables, $views, $domain, FALSE);
-    }
-
     /**
      * This model controller's SQL Abstraction Layer
      *
      * @var SQLAbstract $sqlAbstract
      */
-    protected $sqlAbstract;
+    protected $sql;
     /**
      * This model controller's application domain name.
      *
@@ -601,6 +537,77 @@ class JSONModel {
             throw $this->exception('Cannot delete from view');
         }
         return $this->sql->delete($this->qualifiedName(), $options, $safe);
+    }
+
+    // how JSONModel database tables and views get created and upgraded: iteratively.
+
+    final static function repairSchemaIter (
+        $sql, $primary, $tables, $views, $domain, $iter=TRUE
+    ) {
+        $addedColumnNames = array();
+        $createdTableNames = array();
+        $replacedViewNames = array();
+        $exist = $sql->showTables($domain);
+        foreach ($tables as $table => $columns) {
+            $prefixedName = $sql->prefix($table);
+            if (in_array($prefixedName, $exist)) {
+                $newColumns = array_diff_key($columns, $sql->showColumns($table));
+                if (count($newColumns) > 0) {
+                    $sql->execute($sql->alterTableStatement($table, $newColumns));
+                    $addedColumnNames = array_merge($addedColumnNames, array_keys($newColumns));
+                    if ($iter === TRUE) {
+                        return array(
+                            'complete' => FALSE,
+                            'added' => $addedColumnNames,
+                            'created' => $createdTableNames,
+                            'replaced' => $replacedViewNames
+                        );
+                    }
+                }
+            } else {
+                $sql->execute($sql->createTableStatement(
+                    $table, $columns, $primary[$table]
+                ));
+                array_push($createdTableNames, $table);
+            }
+        }
+        foreach ($views as $view => $select) {
+            $sql->execute($sql->createViewStatement($view, $select));
+            if (in_array($sql->prefix($table), $exist)) {
+                array_push($replacedViewNames, $view);
+            }
+        }
+        return array(
+            'complete' => TRUE,
+            'added' => $addedColumnNames,
+            'created' => $createdTableNames,
+            'replaced' => $replacedViewNames
+        );
+    }
+
+    // infer a schema of primary keys, tables and views from a list JSONModel
+    // (... and preliminary SQL views ,-)
+
+    final static function schema ($models, $views) {
+        $primary = array();
+        $tables = array();
+        foreach($models as $controller) {
+            $name = $controller->qualifiedName();
+            if ($controller->isView) {
+                $views[$name] = $controller->columns;
+            } else {
+                $primary[$name] = $controller->primary;
+                $tables[$name] = $controller->columns;
+            }
+        }
+        return array($primary, $tables, $views);
+    }
+
+    // create or repair the database for a set of models, iteratively.
+
+    final static function repair ($sql, $models, $views=array(), $domain='') {
+        list($primary, $tables, $views) = self::schema($models, $views);
+        return self::repairSchemaIter($sql, $primary, $tables, $views, $domain, FALSE);
     }
 
 }
