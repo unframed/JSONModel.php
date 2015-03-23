@@ -229,7 +229,7 @@ class JSONModel {
             $row = $this->sql->getRowById($this->qualifiedName(), $this->primary[0], $id);
 
             // returns the mapped row or false if not found
-            return ($row !== false) ? $this->map($row) : $row;
+            return (is_array($row)) ? $this->map($row) : null;
 
         } elseif (count($this->primary) > 1) {
             if (!JSONMessage::is_map($id)) {
