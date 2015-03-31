@@ -500,26 +500,27 @@ class JSONModel {
      * @param bool $safe
      * @return int
      */
-    function update (array $values, $options=NULL, $safe=TRUE) {
+    function update (array $values, array $options = array(), $safe = true) {
         if ($this->isView) {
             throw $this->exception('Cannot update in a view');
         }
         // supply the default options: update by primary key
-        if ($options === NULL) {
+        if(empty($options)) {
             if (!$this->assertPrimary($values)) {
                 throw $this->exception("Cannot update without a primary key(s)");
             }
             $options = array(
                 'filter' => array_intersect_key($values, $this->primaryKeys())
-                );
-        } elseif (count(array_intersect_key($values, $this->primaryKeys())) > 0) {
+            );
+        }/* elseif (count(array_intersect_key($values, $this->primaryKeys())) > 0) {
             throw $this->exception('Cannot set the primary key(s)');
-        }
+        }*/
+
         // update a set of $values in this model's table for the relations selected
         // by the options.
         return $this->sql->update(
             $this->qualifiedName(),
-            array_diff_key($values, $this->primary),
+            array_diff_key($values, $this->primaryKeys()),
             $options,
             $safe
             );
