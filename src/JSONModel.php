@@ -504,26 +504,27 @@ class JSONModel {
         if ($this->isView) {
             throw $this->exception('Cannot update in a view');
         }
-        // supply the default options: update by primary key
+        $primary = $this->primaryKeys();
         if(empty($options)) {
+            // require primary key in $values
             if (!$this->assertPrimary($values)) {
-                throw $this->exception("Cannot update without a primary key(s)");
+                throw $this->exception(
+                    "Cannot update a single relation without a primary key"
+                );
             }
+            // supply options to select one relation
             $options = array(
-                'filter' => array_intersect_key($values, $this->primaryKeys())
+                'filter' => array_intersect_key($values, $primary)
             );
-        }/* elseif (count(array_intersect_key($values, $this->primaryKeys())) > 0) {
-            throw $this->exception('Cannot set the primary key(s)');
-        }*/
-
+            // remove primary key values from the update set
+            $values = array_diff_key($values, $primary);
+        } elseif (count(array_intersect_key($values, $primary)) > 0) {
+            // don't UPDATE the primary key, not even part of it !
+            throw $this->exception('Cannot update the primary key');
+        }
         // update a set of $values in this model's table for the relations selected
         // by the options.
-        return $this->sql->update(
-            $this->qualifiedName(),
-            array_diff_key($values, $this->primaryKeys()),
-            $options,
-            $safe
-            );
+        return $this->sql->update($this->qualifiedName(), $values, $options, $safe);
     }
     /**
      * Delete rows from this model's table using select options and return
@@ -538,6 +539,49 @@ class JSONModel {
             throw $this->exception('Cannot delete from view');
         }
         return $this->sql->delete($this->qualifiedName(), $options, $safe);
+    }
+
+    function temporary ($name, array $options, $safe=TRUE) {
+        return $this->sql->temporary(
+        	$this->domain.$name, $this->qualifiedName(), $options, $safe
+    	);
+    }
+
+    /**
+     * Return a count and a JSONModel for a temporary selection.
+     *
+     * Use subset to create temporary tables from a model's table or view,
+     * count it and then access it with all the conveniences of JSONModel.
+     *
+     * @param string $name
+     * @param array $options
+     * @param bool $safe
+     * @return array ($count, $model)
+     */
+    function subset ($name, array $options, $safe=TRUE) {
+        $count = $this->temporary($name, $options, $safe);
+        $m = new JSONMessage($options);
+        $selected = $m->getList('columns', array());
+        if (!empty($selected)) {
+            if ($this->isView) {
+                $columns = array_flip($selected); // dummy columns definition
+            } else {
+                $columns = array_intersect_key($this->columns, array_flip($selected));
+            }
+        } elseif ($this->isView) {
+        	$column = NULL; // no column ,-)
+        } else {
+            $columns = $this->columns; // all columns
+        }
+        $primary = (assertPrimary(array_keys($columns)) ? $this->primary : NULL);
+        return array($count, new JSONModel(array(
+            'name' => $name,
+            'columns' => $columns,
+            'primary' => $primary,
+            'types' => $this->types,
+            'jsonColumn' => $this->jsonColumn,
+            'domain' => $this->domain
+        )));
     }
 
     // how JSONModel database tables and views get created and upgraded: iteratively.
