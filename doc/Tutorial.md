@@ -1,6 +1,6 @@
-JSONModel 
+JSONModel Tutorial
 ===
-Tutorial
+What People Love ORMs For
 ---
 * [Introduction](#introduction)
 * [Use Case](#use-case)
