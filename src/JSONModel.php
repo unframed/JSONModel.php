@@ -51,9 +51,9 @@ class JSONModel {
      */
     protected $isView;
     /**
-     * @var array indexes
+     * @var array keys
      */
-    protected $indexes;
+    protected $keys;
     /**
      *
      */
@@ -63,7 +63,7 @@ class JSONModel {
         $this->name = $m->getString('name');
         $this->columns = $m->getDefault('columns', NULL);
         $this->primary = $m->getList('primary', array($this->name));
-        $this->indexes = $m->getList('indexes', array());
+        $this->keys = $m->getList('keys', array());
         $this->domain = $m->getString('domain', '');
         $this->isView = (is_string($this->columns));
         if ($m->has('jsonColumn')) {
@@ -587,10 +587,11 @@ class JSONModel {
     // how JSONModel database tables and views get created and upgraded: iteratively.
 
     final static function repairSchemaIter (
-        $sql, $primary, $tables, $views, $domain, $iter=TRUE
+        $sql, $primary, $tables, $keys, $views, $domain, $iter=TRUE
     ) {
         $addedColumnNames = array();
         $createdTableNames = array();
+        $createdIndexNames = array();
         $replacedViewNames = array();
         $exist = $sql->showTables($domain);
         foreach ($tables as $table => $columns) {
@@ -605,6 +606,7 @@ class JSONModel {
                             'complete' => FALSE,
                             'added' => $addedColumnNames,
                             'created' => $createdTableNames,
+                            'indexed' => $createdIndexNames,
                             'replaced' => $replacedViewNames
                         );
                     }
@@ -614,6 +616,25 @@ class JSONModel {
                     $table, $columns, $primary[$table]
                 ));
                 array_push($createdTableNames, $table);
+            }
+        }
+        foreach ($keys as $table => $indexes) {
+            $indexed = $sql->showIndexes($table);
+            foreach ($indexes as $columns) {
+                $slug = substr(sha1(json_encode($columns)), 0, 6);
+                $fqn = $sql->prefix($table.'_'.$slug);
+                if (!(in_array($fqn, $indexed))) {
+                    $sql->execute($sql->createIndexStatement($table, $columns, $slug));
+                    if ($iter === TRUE) {
+                        return array(
+                            'complete' => FALSE,
+                            'added' => $addedColumnNames,
+                            'created' => $createdTableNames,
+                            'indexed' => $createdIndexNames,
+                            'replaced' => $replacedViewNames
+                        );
+                    }
+                }
             }
         }
         foreach ($views as $view => $select) {
@@ -626,6 +647,7 @@ class JSONModel {
             'complete' => TRUE,
             'added' => $addedColumnNames,
             'created' => $createdTableNames,
+            'indexed' => $createdIndexNames,
             'replaced' => $replacedViewNames
         );
     }
@@ -636,6 +658,7 @@ class JSONModel {
     final static function schema ($models, $views) {
         $primary = array();
         $tables = array();
+        $keys = array();
         foreach($models as $controller) {
             $name = $controller->qualifiedName();
             if ($controller->isView) {
@@ -643,16 +666,17 @@ class JSONModel {
             } else {
                 $primary[$name] = $controller->primary;
                 $tables[$name] = $controller->columns;
+                $keys[$name] = $controller->keys;
             }
         }
-        return array($primary, $tables, $views);
+        return array($primary, $tables, $keys, $views);
     }
 
     // create or repair the database for a set of models, iteratively.
 
     final static function repair ($sql, $models, $views=array(), $domain='') {
-        list($primary, $tables, $views) = self::schema($models, $views);
-        return self::repairSchemaIter($sql, $primary, $tables, $views, $domain, FALSE);
+        list($primary, $tables, $keys, $views) = self::schema($models, $views);
+        return self::repairSchemaIter($sql, $primary, $tables, $keys, $views, $domain, FALSE);
     }
 
 }
