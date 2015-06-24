@@ -55,6 +55,14 @@ class JSONModel {
      */
     protected $keys;
     /**
+     * @var array foreign
+     */
+    protected $foreign;
+    /**
+     * @var array references
+     */
+    protected $references;
+    /**
      *
      */
     function __construct(SQLAbstract $sql, array $options) {
@@ -63,6 +71,8 @@ class JSONModel {
         $this->name = $m->getString('name');
         $this->columns = $m->getDefault('columns', NULL);
         $this->primary = $m->getList('primary', array($this->name));
+        $this->foreign = $m->getMap('foreign', array());
+        $this->references = $m->getMap('references', array());
         $this->keys = $m->getList('keys', array());
         $this->domain = $m->getString('domain', '');
         $this->isView = (is_string($this->columns));
@@ -106,6 +116,21 @@ class JSONModel {
     final function qualifiedName () {
         return $this->domain.$this->name;
     }
+    final static function constraints (SQLAbstract $sql, array $primary, array $foreign) {
+        $constraints = array(
+            "PRIMARY KEY (".$sql->columns($primary).")"
+        );
+        foreach ($foreign as $table => $keys) {
+            list($columns, $references) = $keys;
+            $constraints[] = (
+                "FOREIGN KEY (".$sql->columns($columns).")"
+                ." REFERENCES ".$sql->prefixed($table)
+                ." (".$sql->columns($references).")"
+                ." ON DELETE CASCADE ON UPDATE CASCADE"
+            );
+        }
+        return $constraints;
+    }
     /**
      * Create if it does not exists or replace this model's table or view.
      */
@@ -114,11 +139,18 @@ class JSONModel {
         if ($this->isView) {
             return $sql->execute($sql->createViewStatement(
                 $this->qualifiedName(), $this->columns
-                ));
+            ));
         } else {
-            return $sql->execute($sql->createTableStatement(
-                $this->qualifiedName(), $this->columns, $this->primary
-                ));
+            $statement = $sql->createTableStatement(
+                $this->qualifiedName(), $this->columns, JSONModel::constraints(
+                    $this->sql, $this->primary, $this->foreign
+                )
+            );
+            // MySQL maintains referential integrity with the InnoDB engine only
+            if ($sql->driver() === 'mysql' && count($this->foreign) > 0) {
+                $statement = $statement.' TYPE=INNODB';
+            }
+            return $sql->execute($statement);
         }
     }
     final function column (array $options=array(), $safe=TRUE) {
@@ -360,6 +392,9 @@ class JSONModel {
     }
 
     function relate (array $options, array $models, $safe=TRUE) {
+        if (count($this->primary) > 1) {
+            throw new Exception('Composite primary key not supported by relate');
+        }
         $index = $this->index($options, $safe);
         if (count($index) > 0) {
             JSONModel::relateModels($this->sql, $index, $models);
@@ -538,7 +573,24 @@ class JSONModel {
         if ($this->isView) {
             throw $this->exception('Cannot delete from view');
         }
-        return $this->sql->delete($this->qualifiedName(), $options, $safe);
+        $sql = $this->sql;
+        if (count($this->references) > 0 && $sql->driver() !== 'mysql') {
+            $message = new JSONMessage($options);
+            $deleted = array_merge(
+                array($this->qualifiedName()), array_keys($this->references)
+            );
+            $joins = SQLAbstract::joins($sql, $this->primary, $this->references);
+            list($whereExpression, $whereParams) = $this->whereParams($message);
+            return $sql->execute((
+                "DELETE ".implode(", ", array_map(
+                    array($sql, 'prefixed'), $deleted
+                ))
+                ." FROM ".$this->prefixed($table)
+                .implode('', $joins)
+                ." WHERE ".$whereExpression
+            ), $whereParams);
+        }
+        return $sql->delete($this->qualifiedName(), $options, $safe);
     }
 
     function temporary ($name, array $options, $safe=TRUE) {
@@ -587,9 +639,10 @@ class JSONModel {
     // how JSONModel database tables and views get created and upgraded: iteratively.
 
     final static function repairSchemaIter (
-        $sql, $primary, $tables, $keys, $views, $domain, $iter=TRUE
+        $sql, $primary, $foreign, $tables, $keys, $views, $domain, $iter=TRUE
     ) {
         $addedColumnNames = array();
+        $addedConstraints = array();
         $createdTableNames = array();
         $createdIndexNames = array();
         $replacedViewNames = array();
@@ -606,6 +659,7 @@ class JSONModel {
                             'complete' => FALSE,
                             'added' => $addedColumnNames,
                             'created' => $createdTableNames,
+                            'foreign' => $addedConstraints,
                             'indexed' => $createdIndexNames,
                             'replaced' => $replacedViewNames
                         );
@@ -613,9 +667,43 @@ class JSONModel {
                 }
             } else {
                 $sql->execute($sql->createTableStatement(
-                    $table, $columns, $primary[$table]
+                    $table, $columns, JSONModel::constraints(
+                        $sql, $primary[$table], array()
+                    )
                 ));
                 array_push($createdTableNames, $table);
+            }
+        }
+        foreach ($foreign as $table => $foreignKeys) {
+            $constraints = array();
+            $exist = $sql->showForeign($table);
+            foreach ($foreignKeys as $referenced => $references) {
+                $fqn = $sql->prefix($referenced);
+                if (!in_array($fqn, $exist)) {
+                    $slug = substr(sha1($table.'_'.$referenced), 0, 6);
+                    $constraints[$table.'_'.$slug] = (
+                        "FOREIGN KEY (".$sql->columns($references[0]).")"
+                        ." REFERENCES ".$sql->prefixed($referenced)
+                        ."(".$sql->columns($references[1]).")"
+                        ." ON DELETE CASCADE ON UPDATE CASCADE"
+                    );
+                }
+            }
+            if (count($constraints) > 0) {
+                $sql->execute($sql->alterTableStatement($table, array(), $constraints));
+                $addedConstraints = array_merge(
+                    $addedConstraints, array_keys($constraints)
+                );
+                if ($iter === TRUE) {
+                    return array(
+                        'complete' => FALSE,
+                        'added' => $addedColumnNames,
+                        'created' => $createdTableNames,
+                        'foreign' => $addedConstraints,
+                        'indexed' => $createdIndexNames,
+                        'replaced' => $replacedViewNames
+                    );
+                }
             }
         }
         foreach ($keys as $table => $indexes) {
@@ -629,6 +717,7 @@ class JSONModel {
                         return array(
                             'complete' => FALSE,
                             'added' => $addedColumnNames,
+                            'foreign' => $addedConstraints,
                             'created' => $createdTableNames,
                             'indexed' => $createdIndexNames,
                             'replaced' => $replacedViewNames
@@ -646,6 +735,7 @@ class JSONModel {
         return array(
             'complete' => TRUE,
             'added' => $addedColumnNames,
+            'foreign' => $addedConstraints,
             'created' => $createdTableNames,
             'indexed' => $createdIndexNames,
             'replaced' => $replacedViewNames
@@ -657,6 +747,7 @@ class JSONModel {
 
     final static function schema ($models, $views) {
         $primary = array();
+        $foreign = array();
         $tables = array();
         $keys = array();
         foreach($models as $controller) {
@@ -665,18 +756,25 @@ class JSONModel {
                 $views[$name] = $controller->columns;
             } else {
                 $primary[$name] = $controller->primary;
+                if (count($controller->foreign) > 0) {
+                    $foreign[$name] = $controller->foreign;
+                }
                 $tables[$name] = $controller->columns;
-                $keys[$name] = $controller->keys;
+                if (count($controller->keys) > 0) {
+                    $keys[$name] = $controller->keys;
+                }
             }
         }
-        return array($primary, $tables, $keys, $views);
+        return array($primary, $foreign, $tables, $keys, $views);
     }
 
     // create or repair the database for a set of models, iteratively.
 
     final static function repair ($sql, $models, $views=array(), $domain='') {
-        list($primary, $tables, $keys, $views) = self::schema($models, $views);
-        return self::repairSchemaIter($sql, $primary, $tables, $keys, $views, $domain, FALSE);
+        list($primary, $foreign, $tables, $keys, $views) = self::schema($models, $views);
+        return self::repairSchemaIter(
+            $sql, $primary, $foreign, $tables, $keys, $views, $domain, FALSE
+        );
     }
 
 }
